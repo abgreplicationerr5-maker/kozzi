@@ -11,15 +11,16 @@ import { cn } from "@/lib/utils";
 export default function HostedApp() {
   const { slug = "" } = useParams();
   const app = useQuery({
-    queryKey: ["public-app", slug],
-    queryFn: () => apiGet<PublicApp>(`/public/apps/${encodeURIComponent(slug)}`),
+    queryKey: ["public-app-view", slug],
+    refetchOnWindowFocus: false,
+    queryFn: () => apiGet<PublicApp>(`/public/apps/${encodeURIComponent(slug)}?view=1`),
     retry: (n, e) => !(e instanceof ApiError && e.status === 404) && n < 2,
   });
 
   useEffect(() => {
     if (app.data) document.title = app.data.title;
     return () => {
-      document.title = "Kozzi — Build and host web apps from a prompt";
+      document.title = "Kozzi: build and host web apps from a prompt";
     };
   }, [app.data]);
 

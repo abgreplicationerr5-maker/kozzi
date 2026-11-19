@@ -23,7 +23,8 @@ INDEXES: dict[str, list[IndexModel]] = {
         IndexModel([("id", ASCENDING)], name="id", unique=True),
         IndexModel([("slug", ASCENDING)], name="slug", unique=True),
         IndexModel([("owner_id", ASCENDING), ("updated_at", DESCENDING)], name="owner_updated"),
-        IndexModel([("is_sample", ASCENDING), ("created_at", ASCENDING)], name="sample_created"),
+        IndexModel([("in_gallery", ASCENDING), ("published", ASCENDING), ("published_at", DESCENDING)], name="gallery"),
+        IndexModel([("owner_id", ASCENDING), ("deleted_at", DESCENDING)], name="owner_deleted"),
     ],
     "versions": [IndexModel([("project_id", ASCENDING), ("number", DESCENDING)], name="project_number", unique=True)],
     "messages": [IndexModel([("project_id", ASCENDING), ("created_at", ASCENDING)], name="project_created")],
@@ -31,6 +32,14 @@ INDEXES: dict[str, list[IndexModel]] = {
     "records": [
         IndexModel([("project_id", ASCENDING), ("table", ASCENDING), ("created_at", DESCENDING)], name="project_table_created"),
         IndexModel([("project_id", ASCENDING), ("table", ASCENDING), ("id", ASCENDING)], name="project_table_id", unique=True),
+        IndexModel([("id", ASCENDING)], name="id"),
+        IndexModel([("project_id", ASCENDING), ("deleted_batch", ASCENDING)], name="project_batch"),
+    ],
+    "app_visits": [IndexModel([("project_id", ASCENDING), ("day", ASCENDING)], name="project_day", unique=True)],
+    "emails": [
+        IndexModel([("project_id", ASCENDING), ("day", ASCENDING)], name="project_day"),
+        IndexModel([("project_id", ASCENDING), ("created_at", DESCENDING)], name="project_created"),
+        IndexModel([("project_id", ASCENDING), ("record_id", ASCENDING)], name="project_record"),
     ],
 }
 

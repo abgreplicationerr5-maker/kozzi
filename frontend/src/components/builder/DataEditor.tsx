@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
-import { Columns3, Database, Plus, RefreshCw, Table2, Trash2 } from "lucide-react";
+import { Columns3, Database, Download, Plus, RefreshCw, Table2, Trash2 } from "lucide-react";
 import { apiDelete, apiGet, apiPatch, apiPost, errorMessage } from "@/lib/api";
 import type { RecordOut, TableInfo } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -72,6 +72,26 @@ function Cell({ value, onSave, testId }: { value: unknown; onSave: (v: unknown) 
   );
 }
 
+function toCsv(columns: string[], rows: RecordOut[]): string {
+  const esc = (v: unknown) => {
+    const t = display(v);
+    return /[",\n\r]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
+  };
+  const head = ["id", ...columns, "created_at", "updated_at"];
+  const body = rows.map((r) => [r.id, ...columns.map((c) => r.data[c]), r.created_at, r.updated_at].map(esc).join(","));
+  return [head.map(esc).join(","), ...body].join("\r\n");
+}
+
+function downloadCsv(name: string, columns: string[], rows: RecordOut[]) {
+  const blob = new Blob([toCsv(columns, rows)], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${name}.csv`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 export default function DataEditor({ projectId }: { projectId: string }) {
   const qc = useQueryClient();
   const [active, setActive] = useState<string | null>(null);
@@ -124,7 +144,7 @@ export default function DataEditor({ projectId }: { projectId: string }) {
     mutationFn: (id: string) => apiDelete(`${base}/records/${id}`),
     onSuccess: () => {
       refresh();
-      toast.success("Row deleted");
+      toast.success("Row moved to the Bin");
     },
     onError: onErr,
   });
@@ -153,7 +173,7 @@ export default function DataEditor({ projectId }: { projectId: string }) {
       setActive(null);
       refresh();
       setDropOpen(false);
-      toast.success("Table deleted");
+      toast.success("Table moved to the Bin");
     },
     onError: onErr,
   });
@@ -162,7 +182,7 @@ export default function DataEditor({ projectId }: { projectId: string }) {
     <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-[#E5E5E3] bg-white md:flex-row" data-testid="data-editor">
       <aside className="flex shrink-0 flex-col border-b border-[#E5E5E3] md:w-52 md:border-b-0 md:border-r">
         <div className="flex items-center justify-between px-3 py-2.5">
-          <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-[#666664]">Tables</span>
+          <span className="text-xs font-medium text-[#111111]">Tables</span>
           <Button size="icon-xs" variant="ghost" aria-label="New table" onClick={() => { setName(""); setNewTableOpen(true); }} data-testid="data-new-table-btn">
             <Plus className="size-3.5" />
           </Button>
@@ -192,7 +212,7 @@ export default function DataEditor({ projectId }: { projectId: string }) {
           <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center" data-testid="data-empty">
             <Database className="size-6 text-[#9A9A97]" strokeWidth={1.5} />
             <p className="max-w-sm text-sm text-[#666664]">
-              No tables yet. Tables appear automatically when your app saves its first record — or create one now.
+              No tables yet. They appear when your app saves its first record, or you can create one now.
             </p>
             <Button size="sm" className="k-press" onClick={() => { setName(""); setNewTableOpen(true); }} data-testid="data-empty-new-table-btn">
               <Plus className="size-3.5" /> New table
@@ -206,6 +226,20 @@ export default function DataEditor({ projectId }: { projectId: string }) {
               </p>
               <Button size="sm" variant="ghost" className="k-press" onClick={refresh} aria-label="Refresh" data-testid="data-refresh-btn">
                 <RefreshCw className={cn("size-3.5", (records.isFetching || tables.isFetching) && "animate-spin")} />
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="k-press"
+                disabled={!active || !records.data?.length}
+                onClick={() => {
+                  if (!active || !records.data) return;
+                  downloadCsv(active, columns, records.data);
+                  toast.success(`Exported ${records.data.length} rows`);
+                }}
+                data-testid="data-export-csv-btn"
+              >
+                <Download className="size-3.5" /> CSV
               </Button>
               <Button size="sm" variant="outline" className="k-press" onClick={() => { setName(""); setNewColOpen(true); }} disabled={!active} data-testid="data-add-column-btn">
                 <Columns3 className="size-3.5" /> Column
@@ -289,10 +323,10 @@ export default function DataEditor({ projectId }: { projectId: string }) {
         <DialogContent className="bg-white sm:max-w-sm" data-testid="data-drop-dialog">
           <DialogHeader>
             <DialogTitle>Delete table “{active}”?</DialogTitle>
-            <DialogDescription>All {table?.count ?? 0} rows are removed permanently.</DialogDescription>
+            <DialogDescription>The table and its {table?.count ?? 0} rows move to the Bin. You can restore them from the dashboard for 30 days.</DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDropOpen(false)}>Cancel</Button>
+            <Button variant="outline" onClick={() => setDropOpen(false)} data-testid="data-drop-cancel-btn">Cancel</Button>
             <Button variant="destructive" onClick={() => dropTable.mutate()} disabled={dropTable.isPending} data-testid="data-drop-confirm-btn">Delete table</Button>
           </DialogFooter>
         </DialogContent>

@@ -2,10 +2,11 @@ import { Link, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Show, useAuth } from "@clerk/react";
 import { motion } from "motion/react";
-import { ArrowRight, Check, Copy, Database, ExternalLink, Globe, MessageSquare } from "lucide-react";
+import { ArrowRight, Check, Copy, Database, ExternalLink, Globe, Mail, MessageSquare } from "lucide-react";
 import { useState } from "react";
 import { apiGet } from "@/lib/api";
-import type { PublicApp, Sample } from "@/lib/types";
+import type { GalleryApp, PublicApp } from "@/lib/types";
+import { formatDistanceToNow } from "date-fns";
 import { buttonVariants } from "@/components/ui/button";
 import Logo from "@/components/Logo";
 import Footer from "@/components/Footer";
@@ -27,7 +28,7 @@ const PLANS = [
     name: "Free",
     price: "$0",
     note: "for trying ideas",
-    features: ["Unlimited drafts", "Live database for every app", "Publish to a kozzi link", "Version history & restore"],
+    features: ["Unlimited projects", "Live database for every app", "Publish to a kozzi link", "Version history and a 30-day Bin"],
     cta: "Start building",
     plan: "free",
   },
@@ -35,7 +36,7 @@ const PLANS = [
     name: "Pro",
     price: "$20",
     note: "per month",
-    features: ["Everything in Free", "Priority AI generation", "Larger tables (25k rows)", "Remove Kozzi badge"],
+    features: ["Everything in Free", "Priority AI generation", "Higher daily email limit", "No Kozzi badge on live apps"],
     cta: "Choose Pro",
     plan: "pro",
     featured: true,
@@ -44,25 +45,25 @@ const PLANS = [
     name: "Team",
     price: "$50",
     note: "per month, 5 seats",
-    features: ["Everything in Pro", "Shared workspace", "Role-based editing", "Priority support"],
+    features: ["Everything in Pro", "Five seats on one bill", "Highest email limit", "Priority support"],
     cta: "Choose Team",
     plan: "team",
   },
 ];
 
-function SampleCard({ sample }: { sample: Sample }) {
+function GalleryCard({ app }: { app: GalleryApp }) {
   const { isSignedIn } = useAuth();
   const navigate = useNavigate();
   const dup = useDuplicateProject(true);
   const { data } = useQuery({
-    queryKey: ["public-app", sample.slug],
-    queryFn: () => apiGet<PublicApp>(`/public/apps/${sample.slug}`),
+    queryKey: ["public-app", app.slug],
+    queryFn: () => apiGet<PublicApp>(`/public/apps/${app.slug}`),
   });
 
-  const remix = () => {
-    if (isSignedIn) dup.mutate(sample.id);
+  const copy = () => {
+    if (isSignedIn) dup.mutate(app.id);
     else {
-      savePending({ type: "remix", projectId: sample.id, title: sample.title });
+      savePending({ type: "remix", projectId: app.id, title: app.title });
       navigate("/sign-up");
     }
   };
@@ -73,13 +74,13 @@ function SampleCard({ sample }: { sample: Sample }) {
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true, margin: "-60px" }}
       transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
-      data-testid={`sample-card-${sample.slug}`}
+      data-testid={`gallery-card-${app.slug}`}
       className="k-card group overflow-hidden rounded-xl border border-[#E5E5E3] bg-white"
     >
-      <Link to={`/app/${sample.slug}`} data-testid={`sample-open-preview-${sample.slug}`} className="relative block aspect-[16/10] overflow-hidden border-b border-[#E5E5E3] bg-[#F9F9F8]">
+      <Link to={`/app/${app.slug}`} data-testid={`gallery-preview-${app.slug}`} className="relative block aspect-[16/10] overflow-hidden border-b border-[#E5E5E3] bg-[#F9F9F8]">
         {data?.html ? (
           <div className="absolute inset-0 origin-top-left scale-[0.5]" style={{ width: "200%", height: "200%" }}>
-            <AppFrame html={data.html} target={{ kind: "public", slug: sample.slug }} title={sample.title} interactive={false} testId={`sample-frame-${sample.slug}`} />
+            <AppFrame html={data.html} target={{ kind: "public", slug: app.slug }} title={app.title} interactive={false} testId={`gallery-frame-${app.slug}`} />
           </div>
         ) : (
           <div className="k-skeleton absolute inset-0" />
@@ -87,19 +88,19 @@ function SampleCard({ sample }: { sample: Sample }) {
         <span className="absolute inset-0 bg-transparent transition-colors duration-200 group-hover:bg-black/[0.02]" />
       </Link>
       <div className="space-y-3 p-5">
-        <div className="flex items-start justify-between gap-3">
-          <h3 className="text-base font-medium tracking-tight">{sample.title}</h3>
-          <span className="shrink-0 rounded-full bg-[#ECFDF5] px-2 py-0.5 font-mono text-[11px] text-[#065F46]" data-testid={`sample-records-${sample.slug}`}>
-            {sample.record_count} live rows
-          </span>
+        <div>
+          <h3 className="text-base font-medium tracking-tight" data-testid={`gallery-title-${app.slug}`}>{app.title}</h3>
+          <p className="mt-0.5 text-[11px] text-[#9A9A97]" data-testid={`gallery-meta-${app.slug}`}>
+            {app.record_count.toLocaleString()} rows · {app.views.toLocaleString()} views · published {formatDistanceToNow(new Date(app.updated_at), { addSuffix: true })}
+          </p>
         </div>
-        <p className="line-clamp-2 text-sm leading-relaxed text-[#666664]">{sample.description}</p>
+        <p className="line-clamp-2 text-sm leading-relaxed text-[#666664]">{app.description}</p>
         <div className="flex gap-2 pt-1">
-          <Link to={`/app/${sample.slug}`} data-testid={`sample-open-btn-${sample.slug}`} className={cn(buttonVariants({ variant: "outline", size: "sm" }), "k-press")}>
+          <Link to={`/app/${app.slug}`} data-testid={`gallery-open-btn-${app.slug}`} className={cn(buttonVariants({ variant: "outline", size: "sm" }), "k-press")}>
             <ExternalLink className="size-3.5" /> Open app
           </Link>
-          <button type="button" onClick={remix} disabled={dup.isPending} data-testid={`sample-remix-btn-${sample.slug}`} className={cn(buttonVariants({ size: "sm" }), "k-press")}>
-            <Copy className="size-3.5" /> {dup.isPending ? "Copying…" : "Duplicate"}
+          <button type="button" onClick={copy} disabled={dup.isPending} data-testid={`gallery-copy-btn-${app.slug}`} className={cn(buttonVariants({ size: "sm" }), "k-press")}>
+            <Copy className="size-3.5" /> {dup.isPending ? "Copying" : "Make a copy"}
           </button>
         </div>
       </div>
@@ -112,7 +113,7 @@ export default function Landing() {
   const { isSignedIn } = useAuth();
   const create = useCreateProject();
   const [prompt, setPrompt] = useState("");
-  const samples = useQuery({ queryKey: ["samples"], queryFn: () => apiGet<Sample[]>("/public/samples") });
+  const gallery = useQuery({ queryKey: ["gallery"], queryFn: () => apiGet<GalleryApp[]>("/public/gallery") });
 
   const start = (text: string) => {
     if (isSignedIn) create.mutate(text);
@@ -129,7 +130,7 @@ export default function Landing() {
           <div className="flex items-center gap-8">
             <Logo />
             <nav className="hidden items-center gap-6 text-sm text-[#666664] md:flex">
-              <a href="#gallery" data-testid="nav-gallery-link" className="transition-colors hover:text-[#111111]">Samples</a>
+              <a href="#gallery" data-testid="nav-gallery-link" className="transition-colors hover:text-[#111111]">Gallery</a>
               <a href="#how" data-testid="nav-how-link" className="transition-colors hover:text-[#111111]">How it works</a>
               <a href="#pricing" data-testid="nav-pricing-link" className="transition-colors hover:text-[#111111]">Pricing</a>
             </nav>
@@ -156,16 +157,13 @@ export default function Landing() {
           transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
           className="relative mx-auto flex max-w-3xl flex-col items-center px-6 pb-20 pt-20 text-center sm:pt-28"
         >
-          <span className="mb-6 inline-flex items-center gap-2 rounded-full border border-[#E5E5E3] bg-white px-3 py-1 font-mono text-[11px] uppercase tracking-[0.16em] text-[#666664]">
-            <span className="size-1.5 rounded-full bg-[#0F766E]" /> Apps with a real database, hosted
-          </span>
           <h1 className="text-4xl font-medium leading-[1.06] tracking-tight text-[#111111] sm:text-5xl lg:text-6xl" data-testid="hero-title">
             Say what you need.
             <br />
             <span className="text-[#666664]">Ship the working app.</span>
           </h1>
           <p className="mt-5 max-w-xl text-base leading-relaxed text-[#666664] sm:text-lg">
-            Kozzi writes the code, wires up live tables, and publishes it to a link anyone can use — all from one sentence.
+            Kozzi writes the code, sets up live tables, runs your data and email commands, and publishes the app to a link anyone can use.
           </p>
           <div className="mt-10 w-full max-w-2xl">
             <PromptBox value={prompt} onChange={setPrompt} onSubmit={start} pending={create.isPending} testId="hero-prompt" />
@@ -187,11 +185,12 @@ export default function Landing() {
       </section>
 
       <section id="how" className="border-y border-[#E5E5E3] bg-white">
-        <div className="mx-auto grid max-w-6xl gap-px bg-[#E5E5E3] md:grid-cols-3">
+        <div className="mx-auto grid max-w-6xl gap-px bg-[#E5E5E3] sm:grid-cols-2 lg:grid-cols-4">
           {[
             { icon: MessageSquare, t: "Describe it", d: "Chat with Kozzi like a teammate. Ask for features, layout or colour changes and watch the app update." },
             { icon: Database, t: "Real data, instantly", d: "Every app gets its own tables. Inspect, add and edit rows in a spreadsheet view while you build." },
-            { icon: Globe, t: "Publish in one click", d: "Pick a link, hit publish. Anyone with the URL can use the finished app — no editing tools in sight." },
+            { icon: Mail, t: "Commands and email", d: "Ask Kozzi to add rows, clean up data, publish, or email you a summary. Your apps can send confirmations too." },
+            { icon: Globe, t: "Publish in one click", d: "Pick a link and publish. Anyone with the URL can use the finished app, without any editing tools." },
           ].map(({ icon: Icon, t, d }) => (
             <div key={t} className="bg-white p-8">
               <Icon className="size-5 text-[#0F766E]" strokeWidth={1.6} />
@@ -205,33 +204,32 @@ export default function Landing() {
       <section id="gallery" className="mx-auto max-w-6xl px-6 py-20">
         <div className="mb-10 flex flex-col justify-between gap-3 md:flex-row md:items-end">
           <div>
-            <p className="font-mono text-xs uppercase tracking-[0.18em] text-[#666664]">Gallery</p>
-            <h2 className="mt-2 text-2xl font-medium tracking-tight sm:text-3xl">Working apps, built in Kozzi</h2>
+            <h2 className="text-2xl font-medium tracking-tight sm:text-3xl">Gallery</h2>
+            <p className="mt-1 text-sm text-[#666664]">Apps people built in Kozzi and chose to share.</p>
           </div>
-          <p className="max-w-md text-sm text-[#666664]">Open any of these and use it for real — the rows you add are stored live. Duplicate one to make it your own.</p>
+          <p className="max-w-md text-sm text-[#666664]">Open one to use it for real, or make a copy to start from its design. Copies start with empty tables.</p>
         </div>
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3" data-testid="sample-gallery">
-          {samples.isLoading &&
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3" data-testid="gallery-grid">
+          {gallery.isLoading &&
             Array.from({ length: 3 }).map((_, i) => <div key={i} className="k-skeleton aspect-[4/3] rounded-xl" />)}
-          {samples.isError && (
+          {gallery.isError && (
             <p className="col-span-full rounded-xl border border-dashed border-[#E5E5E3] p-8 text-center text-sm text-[#666664]">
               The gallery couldn't load right now. Refresh to try again.
             </p>
           )}
-          {samples.data?.length === 0 && (
-            <p className="col-span-full rounded-xl border border-dashed border-[#E5E5E3] p-8 text-center text-sm text-[#666664]">
-              Sample apps are being built. Check back in a minute.
+          {gallery.data?.length === 0 && (
+            <p className="col-span-full rounded-xl border border-dashed border-[#E5E5E3] bg-white p-8 text-center text-sm text-[#666664]" data-testid="gallery-empty">
+              Nothing shared yet. Publish an app and switch on Show in the Kozzi gallery to list it here.
             </p>
           )}
-          {samples.data?.map((s) => <SampleCard key={s.id} sample={s} />)}
+          {gallery.data?.map((a) => <GalleryCard key={a.id} app={a} />)}
         </div>
       </section>
 
       <section id="pricing" className="border-t border-[#E5E5E3] bg-white">
         <div className="mx-auto max-w-5xl px-6 py-20">
           <div className="mb-12 text-center">
-            <p className="font-mono text-xs uppercase tracking-[0.18em] text-[#666664]">Pricing</p>
-            <h2 className="mt-2 text-2xl font-medium tracking-tight sm:text-3xl">Simple plans that grow with you</h2>
+            <h2 className="text-2xl font-medium tracking-tight sm:text-3xl">Simple plans that grow with you</h2>
           </div>
           <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
             {PLANS.map((p) => (
@@ -245,7 +243,6 @@ export default function Landing() {
               >
                 <div className="flex items-center justify-between">
                   <h3 className="text-base font-medium">{p.name}</h3>
-                  {p.featured && <span className="rounded-full bg-[#111111] px-2 py-0.5 text-[11px] text-white">Popular</span>}
                 </div>
                 <p className="mt-4 text-3xl font-medium tracking-tight">
                   {p.price} <span className="text-sm font-normal text-[#666664]">{p.note}</span>

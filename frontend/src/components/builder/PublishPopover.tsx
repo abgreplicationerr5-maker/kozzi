@@ -8,6 +8,7 @@ import { copyText } from "@/lib/hooks";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
 
 const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
@@ -15,21 +16,37 @@ export default function PublishPopover({ project }: { project: Project }) {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [slug, setSlug] = useState(project.slug);
+  const [gallery, setGallery] = useState(project.in_gallery);
   useEffect(() => {
-    if (open) setSlug(project.slug);
-  }, [open, project.slug]);
+    if (open) {
+      setSlug(project.slug);
+      setGallery(project.in_gallery);
+    }
+  }, [open, project.slug, project.in_gallery]);
 
   const url = `${window.location.origin}/app/${project.slug}`;
   const valid = SLUG_RE.test(slug) && slug.length >= 2 && slug.length <= 60;
 
   const publish = useMutation({
-    mutationFn: () => apiPost<Project>(`/projects/${project.id}/publish`, { slug }),
+    mutationFn: () => apiPost<Project>(`/projects/${project.id}/publish`, { slug, in_gallery: gallery }),
     onSuccess: (p) => {
       qc.setQueryData(["project", project.id], p);
       qc.invalidateQueries({ queryKey: ["projects"] });
       toast.success(project.published ? "Latest changes are live" : "Your app is live");
     },
     onError: (e) => toast.error(errorMessage(e)),
+  });
+  const toggleGallery = useMutation({
+    mutationFn: (value: boolean) => apiPost<Project>(`/projects/${project.id}/gallery`, { in_gallery: value }),
+    onSuccess: (p) => {
+      qc.setQueryData(["project", project.id], p);
+      qc.invalidateQueries({ queryKey: ["gallery"] });
+      toast.success(p.in_gallery ? "Listed in the Kozzi gallery" : "Removed from the gallery");
+    },
+    onError: (e) => {
+      setGallery(project.in_gallery);
+      toast.error(errorMessage(e));
+    },
   });
   const unpublish = useMutation({
     mutationFn: () => apiPost<Project>(`/projects/${project.id}/unpublish`),
@@ -64,7 +81,7 @@ export default function PublishPopover({ project }: { project: Project }) {
             </p>
           </div>
           <div>
-            <label className="mb-1 block font-mono text-[11px] uppercase tracking-[0.14em] text-[#666664]" htmlFor="slug-input">Link</label>
+            <label className="mb-1 block text-xs text-[#666664]" htmlFor="slug-input">Link</label>
             <div className="flex items-center overflow-hidden rounded-lg border border-[#E5E5E3] focus-within:border-[#111111]">
               <span className="shrink-0 pl-2.5 font-mono text-xs text-[#9A9A97]">/app/</span>
               <Input
@@ -77,6 +94,27 @@ export default function PublishPopover({ project }: { project: Project }) {
             </div>
             {!valid && <p className="mt-1 text-[11px] text-[#DC2626]">Use lowercase letters, numbers and single dashes.</p>}
           </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={gallery}
+            onClick={() => {
+              const next = !gallery;
+              setGallery(next);
+              if (project.published) toggleGallery.mutate(next);
+            }}
+            disabled={toggleGallery.isPending}
+            data-testid="publish-gallery-toggle"
+            className="flex w-full items-start gap-3 rounded-lg border border-[#E5E5E3] px-3 py-2.5 text-left transition-colors duration-150 hover:bg-[#FBFBFA]"
+          >
+            <span className={cn("relative mt-0.5 inline-flex h-4 w-7 shrink-0 rounded-full transition-colors duration-200", gallery ? "bg-[#0F766E]" : "bg-[#D4D4D2]")}>
+              <span className={cn("absolute top-0.5 size-3 rounded-full bg-white shadow-sm transition-transform duration-200 ease-out", gallery ? "translate-x-3.5" : "translate-x-0.5")} />
+            </span>
+            <span className="min-w-0">
+              <span className="block text-xs font-medium text-[#111111]">Show in the Kozzi gallery</span>
+              <span className="block text-[11px] leading-snug text-[#666664]">Visitors can open it and copy its design. Your rows are never copied.</span>
+            </span>
+          </button>
           <Button className="k-press w-full" disabled={!valid || publish.isPending} onClick={() => publish.mutate()} data-testid="publish-confirm-btn">
             {publish.isPending ? <Loader2 className="size-3.5 animate-spin" /> : <Check className="size-3.5" />}
             {project.published ? "Push latest changes live" : "Publish now"}

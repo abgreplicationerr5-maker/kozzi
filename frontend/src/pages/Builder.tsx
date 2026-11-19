@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "motion/react";
 import { toast } from "sonner";
 import {
-  ArrowLeft, Check, Code2, Database, ExternalLink, Eye, Loader2, MessageSquare, Monitor, Redo2, RotateCw, Smartphone, Tablet, Undo2, X,
+  Activity, ArrowLeft, Check, Code2, Command, Database, ExternalLink, Eye, Loader2, MessageSquare, Monitor, Redo2, RotateCw, Smartphone, Tablet, Undo2, X,
 } from "lucide-react";
 import { ApiError, apiGet, apiPatch, apiPost, errorMessage } from "@/lib/api";
 import type { Device, Me, Project } from "@/lib/types";
@@ -17,8 +17,10 @@ import DataEditor from "@/components/builder/DataEditor";
 import CodeViewer from "@/components/builder/CodeViewer";
 import PublishPopover from "@/components/builder/PublishPopover";
 import VersionMenu from "@/components/builder/VersionMenu";
+import StatsPanel from "@/components/builder/StatsPanel";
+import { openCommandMenu } from "@/components/CommandMenu";
 
-type Tab = "preview" | "data" | "code";
+type Tab = "preview" | "data" | "code" | "activity";
 const WIDTHS: Record<Device, string> = { desktop: "100%", tablet: "768px", phone: "375px" };
 
 function TitleField({ project }: { project: Project }) {
@@ -109,9 +111,12 @@ export default function Builder() {
       qc.invalidateQueries({ queryKey: ["messages", projectId] });
       qc.invalidateQueries({ queryKey: ["versions", projectId] });
       qc.invalidateQueries({ queryKey: ["tables", projectId] });
-      if (p.gen_error) toast.error("Kozzi couldn't finish that update. Try again.");
+      qc.invalidateQueries({ queryKey: ["records", projectId] });
+      qc.invalidateQueries({ queryKey: ["stats", projectId] });
+      qc.invalidateQueries({ queryKey: ["projects"] });
+      if (p.gen_error) toast.error("Kozzi stopped before finishing. You can retry from the chat.");
       else {
-        toast.success("Your app has been updated");
+        toast.success("Done");
         setMobilePane("canvas");
       }
       setAppError(null);
@@ -154,6 +159,15 @@ export default function Builder() {
         </div>
         {p && (
           <div className="flex items-center gap-0.5 sm:gap-1">
+            <button
+              type="button"
+              onClick={openCommandMenu}
+              aria-label="Open command menu"
+              data-testid="builder-command-menu-btn"
+              className="k-press mr-1 hidden items-center gap-1 rounded-md border border-[#E5E5E3] px-1.5 py-1 text-[11px] text-[#9A9A97] transition-colors duration-150 hover:text-[#111111] xl:inline-flex"
+            >
+              <Command className="size-3" /> K
+            </button>
             <Button variant="ghost" size="icon-sm" className="k-press" aria-label="Undo" data-testid="builder-undo-btn" disabled={!p.can_undo || step.isPending || p.generating} onClick={() => step.mutate("undo")}>
               <Undo2 className="size-4" />
             </Button>
@@ -198,6 +212,7 @@ export default function Builder() {
                 { id: "preview", label: "Preview", icon: Eye },
                 { id: "data", label: "Data", icon: Database },
                 { id: "code", label: "Code", icon: Code2 },
+                { id: "activity", label: "Activity", icon: Activity },
               ] as const).map(({ id, label, icon: Icon }) => (
                 <button
                   key={id}
@@ -206,7 +221,7 @@ export default function Builder() {
                   aria-selected={tab === id}
                   onClick={() => setTab(id)}
                   data-testid={`tab-${id}-btn`}
-                  className={cn("relative flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs transition-colors duration-150", tab === id ? "text-[#111111]" : "text-[#666664] hover:text-[#111111]")}
+                  className={cn("relative flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs sm:px-3 transition-colors duration-150", tab === id ? "text-[#111111]" : "text-[#666664] hover:text-[#111111]")}
                 >
                   {tab === id && <motion.span layoutId="builder-tab" className="absolute inset-0 rounded-md bg-[#F4F4F2]" transition={{ type: "spring", stiffness: 500, damping: 38 }} />}
                   <Icon className="relative size-3.5" />
@@ -274,7 +289,7 @@ export default function Builder() {
                             <span className="k-breathe absolute size-10 rounded-full bg-[#0F766E]/10" />
                             <span className="k-breathe size-3 rounded-full bg-[#0F766E]" />
                           </span>
-                          <p className="text-sm text-[#666664]">Kozzi is building your first version…</p>
+                          <p className="text-sm text-[#666664]" data-testid="preview-building-text">Building the first version</p>
                           <div className="w-full max-w-md space-y-2">
                             <div className="k-skeleton h-8 rounded-lg" />
                             <div className="k-skeleton h-24 rounded-lg" />
@@ -296,6 +311,7 @@ export default function Builder() {
             )}
             {tab === "data" && <DataEditor projectId={projectId} />}
             {tab === "code" && <CodeViewer html={p?.html ?? ""} filename={`${p?.slug || "app"}.html`} />}
+            {tab === "activity" && <StatsPanel projectId={projectId} published={!!p?.published} />}
           </div>
         </section>
       </div>

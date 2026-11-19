@@ -2,7 +2,7 @@
 // data API. The iframe gets a tiny `kozzi` SDK that postMessages the parent; the
 // parent performs the real API call and posts the result back.
 import { apiDelete, apiGet, apiPatch, apiPost, errorMessage } from "@/lib/api";
-import type { AiOut, RecordOut } from "@/lib/types";
+import type { AiOut, EmailOut, RecordOut } from "@/lib/types";
 
 export type RuntimeTarget = { kind: "owner"; projectId: string } | { kind: "public"; slug: string };
 
@@ -16,7 +16,9 @@ get:function(t,id){return call("get",{table:t,id:id});},
 insert:function(t,f){return call("insert",{table:t,data:f||{}});},
 update:function(t,id,f){return call("update",{table:t,id:id,data:f||{}});},
 remove:function(t,id){return call("remove",{table:t,id:id});}},
-ai:{ask:function(p,s){return call("ai",{prompt:String(p),system:s?String(s):""});}}};
+ai:{ask:function(p,s){return call("ai",{prompt:String(p),system:s?String(s):""});}},
+email:{notifyOwner:function(s,m){return call("notify",{subject:String(s||"").slice(0,120),message:String(m||"").slice(0,2000)});},
+sendReceipt:function(t,id){return call("receipt",{table:t,id:id});}}};
 window.addEventListener("error",function(e){parent.postMessage({__kozziLog:1,message:String(e.message||"Script error")},"*");});
 window.addEventListener("unhandledrejection",function(e){parent.postMessage({__kozziLog:1,message:String((e.reason&&e.reason.message)||e.reason||"Unhandled error")},"*");});
 })();</script>`;
@@ -37,6 +39,8 @@ interface Args {
   data?: Record<string, unknown>;
   prompt?: string;
   system?: string;
+  subject?: string;
+  message?: string;
 }
 
 const enc = encodeURIComponent;
@@ -62,10 +66,14 @@ export async function handleOp(target: RuntimeTarget, op: string, args: Args): P
       return true;
     case "ai":
       return (await apiPost<AiOut>(`${base}/ai`, { prompt: args.prompt, system: args.system ?? "" })).text;
+    case "notify":
+      return (await apiPost<EmailOut>(`${base}/email/notify`, { subject: args.subject, message: args.message })).ok;
+    case "receipt":
+      return (await apiPost<EmailOut>(`${base}/email/receipt`, { table: args.table, record_id: args.id })).ok;
     default:
       throw new Error(`Unknown operation ${op}`);
   }
 }
 
-export const WRITE_OPS = new Set(["insert", "update", "remove"]);
+export const WRITE_OPS = new Set(["insert", "update", "remove", "notify", "receipt"]);
 export { errorMessage };

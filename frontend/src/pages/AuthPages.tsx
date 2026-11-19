@@ -12,7 +12,7 @@ function Shell({ children, mode }: { children: React.ReactNode; mode: "in" | "up
         <div className="k-grid-bg pointer-events-none absolute inset-0 opacity-50" />
         <Logo className="relative" />
         <div className="relative max-w-md">
-          <p className="font-mono text-xs uppercase tracking-[0.18em] text-[#666664]">{mode === "up" ? "Create your account" : "Welcome back"}</p>
+          <p className="text-sm text-[#666664]">{mode === "up" ? "Create your account" : "Welcome back"}</p>
           <h1 className="mt-3 text-3xl font-medium leading-tight tracking-tight">
             {mode === "up" ? "Your first app is one sentence away." : "Pick up right where you left off."}
           </h1>

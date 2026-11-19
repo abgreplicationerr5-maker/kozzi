@@ -1,17 +1,24 @@
-"""Live data for generated apps: owner endpoints (builder Data tab + preview)
-and public endpoints (hosted /app/:slug and the sample gallery)."""
+"""Live data for generated apps: owner endpoints (builder Data tab + preview) and public
+endpoints (hosted /app/:slug), plus the gallery, per-app stats and app-initiated email."""
 
 import time
+from contextlib import asynccontextmanager
 from collections import defaultdict
+from datetime import timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
 
 from clerk_auth import require_user
-from lib import core
+from lib import core, email
+from lib.dates import today_iso
 from lib.db import db
 from lib.generator import ai_complete
-from models.schemas import AiIn, AiOut, ColumnCreate, PublicApp, RecordIn, RecordOut, Sample, TableCreate, TableInfo
+from models.schemas import (
+    AiIn, AiOut, ColumnCreate, DayStat, EmailLog, EmailNotifyIn, EmailOut, EmailReceiptIn, GalleryApp, PublicApp,
+    RecordIn, RecordOut, Stats, TableCreate, TableInfo,
+)
+from routers.projects import views_by_project
 
 router = APIRouter()
 
@@ -55,7 +62,7 @@ async def owner_add_column(project_id: str, table: str, body: ColumnCreate, user
     name = body.name.strip()
     if name in core.RESERVED:
         raise HTTPException(status_code=422, detail="That column name is reserved")
-    if not await db.app_tables.find_one({"project_id": pid, "name": table}):
+    if not await db.app_tables.find_one({"project_id": pid, "name": table, **core.LIVE}):
         raise HTTPException(status_code=404, detail="Table not found")
     await core.ensure_table(pid, table, [name])
     return next(t for t in await core.list_tables(pid) if t.name == table)
@@ -63,11 +70,7 @@ async def owner_add_column(project_id: str, table: str, body: ColumnCreate, user
 
 @router.delete("/projects/{project_id}/tables/{table}", status_code=204)
 async def owner_delete_table(project_id: str, table: str, user: dict = Depends(require_user)):
-    pid = await _pid(project_id, user)
-    res = await db.app_tables.delete_one({"project_id": pid, "name": table})
-    if res.deleted_count == 0:
-        raise HTTPException(status_code=404, detail="Table not found")
-    await db.records.delete_many({"project_id": pid, "table": table})
+    await core.delete_table(await _pid(project_id, user), table)
     return Response(status_code=204)
 
 
@@ -104,28 +107,68 @@ async def owner_ai(project_id: str, body: AiIn, user: dict = Depends(require_use
     return AiOut(text=await ai_complete(body.prompt, body.system))
 
 
-# ---------- public (hosted apps + samples) ----------
+@router.post("/projects/{project_id}/email/notify", response_model=EmailOut)
+async def owner_notify(project_id: str, body: EmailNotifyIn, user: dict = Depends(require_user)):
+    doc = await core.owned_project(project_id, user["user_id"])
+    return EmailOut(ok=True, to=await email.send_owner_notification(doc, body.subject, body.message))
 
-@router.get("/public/samples", response_model=list[Sample])
-async def samples():
-    docs = await db.projects.find({"is_sample": True, "html": {"$nin": ["", None]}}, {"_id": 0, "html": 0, "published_html": 0}).sort(
-        "created_at", 1).to_list(24)
-    out = []
-    for d in docs:
-        out.append(Sample(
+
+@router.post("/projects/{project_id}/email/receipt", response_model=EmailOut)
+async def owner_receipt(project_id: str, body: EmailReceiptIn, user: dict = Depends(require_user)):
+    doc = await core.owned_project(project_id, user["user_id"])
+    return EmailOut(ok=True, to=await email.send_record_receipt(doc, body.table, body.record_id))
+
+
+@router.get("/projects/{project_id}/stats", response_model=Stats)
+async def owner_stats(project_id: str, user: dict = Depends(require_user)):
+    pid = await _pid(project_id, user)
+    today = today_iso()
+    days = [(core.now() - timedelta(days=i)).strftime("%Y-%m-%d") for i in range(13, -1, -1)]
+    visits = {v["day"]: v["count"] for v in await db.app_visits.find({"project_id": pid, "day": {"$in": days}}, {"_id": 0}).to_list(30)}
+    since = core.now() - timedelta(days=14)
+    rec_days = {
+        r["_id"]: r["n"] for r in await db.records.aggregate([
+            {"$match": {"project_id": pid, "created_at": {"$gte": since}, **core.LIVE}},
+            {"$group": {"_id": {"$dateToString": {"format": "%Y-%m-%d", "date": "$created_at"}}, "n": {"$sum": 1}}},
+        ]).to_list(30)
+    }
+    emails = await db.emails.find({"project_id": pid}, {"_id": 0}).sort("created_at", -1).to_list(10)
+    return Stats(
+        views_total=(await views_by_project([pid])).get(pid, 0),
+        views_today=visits.get(today, 0),
+        records_total=await db.records.count_documents({"project_id": pid, **core.LIVE}),
+        tables_total=await db.app_tables.count_documents({"project_id": pid, **core.LIVE}),
+        emails_total=await db.emails.count_documents({"project_id": pid, "ok": True}),
+        days=[DayStat(day=d, views=visits.get(d, 0), records=rec_days.get(d, 0)) for d in days],
+        recent_emails=[EmailLog(**{**e, "created_at": core.aware(e["created_at"])}) for e in emails],
+    )
+
+
+# ---------- public (hosted apps + gallery) ----------
+
+@router.get("/public/gallery", response_model=list[GalleryApp])
+async def gallery():
+    docs = await db.projects.find(
+        {"in_gallery": True, "published": True, "published_html": {"$nin": ["", None]}, **core.LIVE},
+        {"_id": 0, "html": 0, "published_html": 0},
+    ).sort("published_at", -1).to_list(24)
+    views = await views_by_project([d["id"] for d in docs])
+    return [
+        GalleryApp(
             id=d["id"], title=d["title"], slug=d["slug"], description=d.get("description", ""),
-            table_count=await db.app_tables.count_documents({"project_id": d["id"]}),
-            record_count=await db.records.count_documents({"project_id": d["id"]}),
-            updated_at=core.aware(d["updated_at"]),
-        ))
-    return out
+            record_count=await db.records.count_documents({"project_id": d["id"], **core.LIVE}),
+            views=views.get(d["id"], 0), updated_at=core.aware(d.get("published_at") or d["updated_at"]),
+        )
+        for d in docs
+    ]
 
 
 @router.get("/public/apps/{slug}", response_model=PublicApp)
-async def public_app(slug: str):
+async def public_app(slug: str, view: int = 0):
     d = await core.public_project(slug)
-    html = d.get("published_html") or d.get("html", "")
-    return PublicApp(title=d["title"], slug=d["slug"], html=html, is_sample=bool(d.get("is_sample")))
+    if view:  # counted only for full-screen visits, not gallery thumbnails
+        await db.app_visits.update_one({"project_id": d["id"], "day": today_iso()}, {"$inc": {"count": 1}}, upsert=True)
+    return PublicApp(title=d["title"], slug=d["slug"], html=d.get("published_html") or d.get("html", ""))
 
 
 @router.get("/public/apps/{slug}/tables/{table}/records", response_model=list[RecordOut])
@@ -159,3 +202,30 @@ async def public_ai(slug: str, body: AiIn):
     pid = (await core.public_project(slug))["id"]
     _rate_limit(pid)
     return AiOut(text=await ai_complete(body.prompt, body.system))
+
+
+@router.post("/public/apps/{slug}/email/notify", response_model=EmailOut)
+async def public_notify(slug: str, body: EmailNotifyIn):
+    doc = await core.public_project(slug)
+    async with _public_email_errors():
+        await email.send_owner_notification(doc, body.subject, body.message)
+    return EmailOut(ok=True)  # never reveal the owner's address to visitors
+
+
+@router.post("/public/apps/{slug}/email/receipt", response_model=EmailOut)
+async def public_receipt(slug: str, body: EmailReceiptIn):
+    doc = await core.public_project(slug)
+    async with _public_email_errors():
+        to = await email.send_record_receipt(doc, body.table, body.record_id)
+    return EmailOut(ok=True, to=to)
+
+
+@asynccontextmanager
+async def _public_email_errors():
+    """Visitors see a generic message; the owner sees the billing detail in Activity."""
+    try:
+        yield
+    except HTTPException as e:
+        if e.status_code == 503:
+            raise HTTPException(status_code=503, detail="Email is temporarily unavailable")
+        raise

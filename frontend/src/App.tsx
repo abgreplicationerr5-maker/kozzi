@@ -2,6 +2,7 @@ import { Routes, Route, useLocation } from "react-router-dom";
 import { AnimatePresence, motion } from "motion/react";
 import ClerkAuthProvider from "@/components/auth/ClerkAuthProvider";
 import RequireAuth from "@/components/RequireAuth";
+import CommandMenu from "@/components/CommandMenu";
 import { Toaster } from "@/components/ui/sonner";
 import Landing from "@/pages/Landing";
 import Dashboard from "@/pages/Dashboard";
@@ -40,6 +41,7 @@ export default function App() {
                   <Route path="*" element={<NotFound />} />
                 </Routes>
               </AnimatePresence>
+              <CommandMenu />
             </ClerkAuthProvider>
           }
         />

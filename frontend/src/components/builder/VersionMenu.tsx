@@ -34,7 +34,7 @@ export default function VersionMenu({ project }: { project: Project }) {
         }
       />
       <PopoverContent align="end" className="w-80 border border-[#E5E5E3] bg-white p-0 shadow-lg" data-testid="version-history-menu">
-        <p className="border-b border-[#E5E5E3] px-3 py-2 font-mono text-[11px] uppercase tracking-[0.14em] text-[#666664]">Version history</p>
+        <p className="border-b border-[#E5E5E3] px-3 py-2 text-xs font-medium text-[#111111]">Version history</p>
         <div className="k-scroll max-h-80 overflow-y-auto p-1">
           {versions.data?.map((v) => (
             <div

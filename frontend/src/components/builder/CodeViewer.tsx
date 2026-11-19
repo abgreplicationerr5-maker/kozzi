@@ -29,7 +29,7 @@ export default function CodeViewer({ html, filename }: { html: string; filename:
   if (!html)
     return (
       <div className="flex h-full items-center justify-center p-8 text-sm text-[#666664]" data-testid="code-empty">
-        No code yet — describe your app in the chat to generate it.
+        No code yet. Describe your app in the chat to generate it.
       </div>
     );
 

@@ -23,24 +23,28 @@ PROGRESS: dict[str, int] = {}
 SYSTEM_PROMPT = """You are Kozzi, an expert product engineer who builds complete, production-quality web apps as ONE self-contained HTML file (HTML + CSS + JavaScript).
 
 RUNTIME
-The app runs inside a sandboxed iframe. A global `kozzi` object is injected before your scripts run. It is the app's REAL persistent database — use it for ALL data:
+The app runs inside a sandboxed iframe. A global `kozzi` object is injected before your scripts run. It is the app's REAL persistent database: use it for ALL data:
   await kozzi.db.list(table)                -> array of rows: { id, created_at, updated_at, ...fields } (newest first)
   await kozzi.db.get(table, id)             -> row or null
   await kozzi.db.insert(table, fields)      -> created row
   await kozzi.db.update(table, id, fields)  -> updated row (fields are merged)
   await kozzi.db.remove(table, id)          -> true
   await kozzi.ai.ask(prompt, system?)       -> string (an AI text completion; use only when the user asks for AI features)
+  await kozzi.email.notifyOwner(subject, message) -> sends a real email to the app's owner (plain text message). Use for "notify me when someone signs up / orders / submits".
+  await kozzi.email.sendReceipt(table, id)  -> sends a fixed confirmation email to the address in that row's `email` field (once per row). Use for "email the guest a confirmation". Store the address in a field named `email`.
+  Emails are capped per app per day and may throw; never block the main action on them, show a small inline note if they fail.
   kozzi.ready                               -> Promise that resolves when the runtime is connected
-Tables are created automatically on first insert. Table names: lowercase snake_case (e.g. clients, habits, check_ins). Field values must be JSON (strings, numbers, booleans, arrays, objects). All calls are async and may throw — catch errors and show a friendly inline message.
+Tables are created automatically on first insert. Table names: lowercase snake_case (e.g. clients, habits, check_ins). Field values must be JSON (strings, numbers, booleans, arrays, objects). All calls are async and may throw: catch errors and show a friendly inline message.
 
 HARD RULES
 - Output the COMPLETE file every time, never a diff or partial snippet. Never use "..." placeholders.
-- NEVER use localStorage, sessionStorage, cookies, IndexedDB or window.parent — they are blocked in the sandbox. Persist everything through kozzi.db.
+- NEVER use localStorage, sessionStorage, cookies, IndexedDB or window.parent: they are blocked in the sandbox. Persist everything through kozzi.db.
 - NEVER hardcode fake/sample/demo records. The app starts empty and shows a helpful empty state inviting the user to add the first item. Every list, stat and chart is computed from real kozzi.db rows.
 - Every button, link, form and filter must actually work. No dead links (use buttons or in-page navigation; for multi-view apps implement simple client-side view switching). No alert()-only stubs.
 - Validate forms, show loading states while data loads, and update the UI immediately after writes.
 - Fully responsive (looks great at 375px phone, 768px tablet and desktop).
 - Wait for `await kozzi.ready` before the first data load.
+- Write plain, human UI copy. Never use em dashes or en dashes. No spaced-out uppercase letter labels, no filler like "Welcome to your workspace", no lorem ipsum, no fake testimonials or fake stats.
 
 DESIGN
 - Write polished, modern CSS: clear typography hierarchy, generous spacing, subtle borders and shadows, smooth hover/focus transitions, accessible contrast. Pick a tasteful palette that fits the app unless the user specifies one.
@@ -49,7 +53,7 @@ DESIGN
 
 RESPONSE FORMAT (exactly):
 TITLE: <short app name, 2-4 words>
-SUMMARY: <1-3 friendly sentences describing what you built or changed, written to the user>
+SUMMARY: <1-2 plain sentences saying what you built or changed, written to the user, no em dashes>
 ```html
 <!DOCTYPE html>
 ... the complete file ...
@@ -128,7 +132,7 @@ async def build_prompt(project: dict, request: str) -> str:
     current = project.get("html") or ""
     code_part = (
         f"CURRENT APP CODE (modify it to satisfy the request, keep everything else working):\n```html\n{current}\n```"
-        if current else "There is no code yet — build the app from scratch."
+        if current else "There is no code yet, build the app from scratch."
     )
     return (
         f"{code_part}\n\nEXISTING DATABASE TABLES (keep using these names/fields so live data stays intact):\n{schema}\n\n"
@@ -136,13 +140,14 @@ async def build_prompt(project: dict, request: str) -> str:
     )
 
 
-async def run_generation(project_id: str, request: str) -> None:
-    """Generate code for a project, then record a new version + assistant message."""
+async def build_code(project_id: str, request: str) -> tuple[int, str]:
+    """Write the next version of the app's code. Returns (version number, summary).
+    Raises on failure; the agent turns that into a chat message."""
     PROGRESS[project_id] = 0
     try:
         project = await db.projects.find_one({"id": project_id}, {"_id": 0})
         if not project:
-            return
+            raise ValueError("Project not found")
         prompt = await build_prompt(project, request)
         text = await stream_text(llm_chat(SYSTEM_PROMPT), prompt, project_id)
         title, summary, html = parse_output(text)
@@ -154,36 +159,13 @@ async def run_generation(project_id: str, request: str) -> None:
             "id": str(uuid.uuid4()), "project_id": project_id, "number": number,
             "label": request[:120], "html": html, "created_at": ts,
         })
-        update: dict = {
-            "html": html, "version_count": number, "version_pointer": number,
-            "generating": False, "gen_error": "", "updated_at": ts,
-        }
+        update: dict = {"html": html, "version_count": number, "version_pointer": number, "updated_at": ts}
         if title and project.get("title_auto", True):
             update["title"] = title
         if not project.get("description"):
             update["description"] = (summary or request)[:300]
         await db.projects.update_one({"id": project_id}, {"$set": update})
-        await db.messages.insert_one({
-            "id": str(uuid.uuid4()), "project_id": project_id, "role": "assistant",
-            "content": summary or "Done — your app has been updated.",
-            "version_number": number, "error": False, "created_at": now(),
-        })
-    except Exception as exc:  # surface every failure to the user in the thread
-        logger.exception("generation failed for %s", project_id)
-        budget = "budget" in str(exc).lower()
-        await db.projects.update_one(
-            {"id": project_id},
-            {"$set": {"generating": False, "gen_error": "AI credits exhausted" if budget else str(exc)[:300], "updated_at": now()}},
-        )
-        await db.messages.insert_one({
-            "id": str(uuid.uuid4()), "project_id": project_id, "role": "assistant",
-            "content": (
-                "Kozzi's AI credits have run out, so I couldn't build this. Once the AI balance is topped up, send your request again."
-                if budget else
-                "Sorry — I couldn't finish that update. Please try again or rephrase your request."
-            ),
-            "version_number": None, "error": True, "created_at": now(),
-        })
+        return number, summary or "Your app has been updated."
     finally:
         PROGRESS.pop(project_id, None)
 

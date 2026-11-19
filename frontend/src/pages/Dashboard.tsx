@@ -63,6 +63,11 @@ function ProjectCard({ p, onDelete }: { p: ProjectSummary; onDelete: (p: Project
           Updated {formatDistanceToNow(new Date(p.updated_at), { addSuffix: true })} · v{p.version_pointer}
           {p.published && ` · ${p.views.toLocaleString()} ${p.views === 1 ? "view" : "views"}`}
         </p>
+        {p.custom_domain && (
+          <p className="mt-1 truncate font-mono text-[11px] text-[#666664]" data-testid={`project-domain-${p.id}`}>
+            {p.custom_domain}{p.domain_status === "connected" ? "" : " (not forwarding yet)"}
+          </p>
+        )}
       </Link>
       <div className="flex items-center gap-1 border-t border-[#E5E5E3] px-3 py-2">
         <Link to={`/builder/${p.id}`} data-testid={`project-open-btn-${p.id}`} className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "k-press")}>

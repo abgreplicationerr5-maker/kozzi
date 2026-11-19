@@ -25,6 +25,7 @@ INDEXES: dict[str, list[IndexModel]] = {
         IndexModel([("owner_id", ASCENDING), ("updated_at", DESCENDING)], name="owner_updated"),
         IndexModel([("in_gallery", ASCENDING), ("published", ASCENDING), ("published_at", DESCENDING)], name="gallery"),
         IndexModel([("owner_id", ASCENDING), ("deleted_at", DESCENDING)], name="owner_deleted"),
+        IndexModel([("custom_domain", ASCENDING)], name="custom_domain"),
     ],
     "versions": [IndexModel([("project_id", ASCENDING), ("number", DESCENDING)], name="project_number", unique=True)],
     "messages": [IndexModel([("project_id", ASCENDING), ("created_at", ASCENDING)], name="project_created")],

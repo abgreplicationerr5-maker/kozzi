@@ -29,6 +29,10 @@ export interface ProjectSummary {
   version_count: number;
   has_unpublished_changes: boolean;
   views: number;
+  custom_domain: string;
+  domain_status: "" | "pending" | "connected" | "failed";
+  domain_detail: string;
+  domain_checked_at: string | null;
   created_at: string;
   updated_at: string;
   published_at: string | null;

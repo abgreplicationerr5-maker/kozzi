@@ -37,6 +37,10 @@ class ProjectSummary(BaseModel):
     version_count: int = 0
     has_unpublished_changes: bool = False
     views: int = 0
+    custom_domain: str = ""
+    domain_status: Literal["", "pending", "connected", "failed"] = ""
+    domain_detail: str = ""
+    domain_checked_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
     published_at: Optional[datetime] = None
@@ -90,6 +94,10 @@ class Version(BaseModel):
 class PublishIn(BaseModel):
     slug: str = Field(min_length=2, max_length=60, pattern=r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
     in_gallery: Optional[bool] = None
+
+
+class DomainIn(BaseModel):
+    domain: str = Field(min_length=4, max_length=260)
 
 
 class GalleryIn(BaseModel):

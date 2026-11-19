@@ -30,12 +30,18 @@ All assistant text passes `core.tidy` (no em/en dashes).
 Recipients are always server-side: (a) chat `send_email` -> the signed-in owner; (b) `kozzi.email.notifyOwner(subject, message)` -> the app owner; (c) `kozzi.email.sendReceipt(table, id)` -> the `email` field of that stored row, fixed template, once per row. Cap 30 sends per app per day. Every send is logged in `emails` and runs `_assert_safe_email`. Billing refusals (402/403/409) return 503 with an owner-facing explanation on owner routes and a generic message on public routes.
 **Status at time of writing: the provider returns 402 insufficient_credits for this account, so sends are logged as failed until the Universal Key balance/budget allows email.**
 
+## Own domain + embed (backend/routers/domains.py, frontend ShareDialog)
+Emergent hosting allows ONE custom domain per deployment, added by hand in the Emergent dashboard, so per-app domains work by registrar forwarding:
+user saves a domain (PUT /projects/{id}/domain, normalized, unique across live projects), forwards it at their registrar (301, or masked/framed) to `<kozzi host>/app/<slug>`,
+then POST /projects/{id}/domain/check fetches https then http://domain/ (no auto-redirects, max 6 hops, only public IPs to block SSRF) and marks `connected` when a redirect lands on `/app/<slug>` on the Kozzi host (taken from X-Forwarded-Host) or a 200 page frames it; otherwise `failed` with a plain reason. DELETE removes it.
+Embed tab: copy-ready `<iframe>` snippet (600/720/900px). Entry points: Publish popover "Own domain" / "Embed" buttons (published apps). Dashboard cards show the domain.
+
 ## Soft delete + Bin
 Nothing is hard-deleted. Projects, app_tables and records get `deleted_at` (tables + their rows share a `deleted_batch`). All reads filter `deleted_at: None` (`core.LIVE`). Bin (`/api/trash`) lists the last 30 days; restore endpoints: `/trash/projects/{id}/restore`, `/trash/projects/{id}/tables/{name}/restore`, `/trash/records/{id}/restore`. Deleting a project takes its live link offline (public_project filters deleted).
 
 ## Data model (Mongo, string uuid ids)
 - users {user_id, display_name, workspace_name (optional team name), email, preferences{default_device, sidebar_collapsed}}
-- projects {id, owner_id, title, title_auto, slug(unique), description, html, published, published_html, published_at, in_gallery, version_count, version_pointer, generating, gen_phase, gen_error, gen_started_at, deleted_at}
+- projects {id, owner_id, custom_domain, domain_status pending|connected|failed, domain_detail, domain_checked_at, title, title_auto, slug(unique), description, html, published, published_html, published_at, in_gallery, version_count, version_pointer, generating, gen_phase, gen_error, gen_started_at, deleted_at}
 - versions {id, project_id, number, label, html}
 - messages {id, project_id, role user|assistant, kind user|plan|action|build|error|note, content, version_number, error, meta{}}
 - app_tables {project_id, name, columns[], deleted_at, deleted_batch}; records {id, project_id, table, data{}, created_at, updated_at, deleted_at, deleted_batch}
@@ -43,4 +49,4 @@ Nothing is hard-deleted. Projects, app_tables and records get `deleted_at` (tabl
 Old sample apps (owner `kozzi-samples`) were retired via soft delete; seed.py removed.
 
 ## Key API
-/api/me GET/PATCH · /api/projects CRUD · /duplicate · /messages · /retry · /versions · /undo · /redo · /versions/{n}/restore · /publish {slug, in_gallery?} · /unpublish · /gallery {in_gallery} · /stats · /email/notify · /email/receipt · /projects/{id}/tables[/{t}/records[/{rid}]] · /columns · /ai · /api/trash[...] · /api/public/gallery · /api/public/apps/{slug}[?view=1][/tables/{t}/records…][/ai][/email/notify|receipt]
+/api/me GET/PATCH · /api/projects CRUD · /duplicate · /messages · /retry · /versions · /undo · /redo · /versions/{n}/restore · /publish {slug, in_gallery?} · /unpublish · /gallery {in_gallery} · /stats · /domain PUT/DELETE · /domain/check · /email/notify · /email/receipt · /projects/{id}/tables[/{t}/records[/{rid}]] · /columns · /ai · /api/trash[...] · /api/public/gallery · /api/public/apps/{slug}[?view=1][/tables/{t}/records…][/ai][/email/notify|receipt]

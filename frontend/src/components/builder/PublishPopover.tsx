@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Check, Copy, ExternalLink, Globe, Loader2 } from "lucide-react";
+import { Check, Code2, Copy, ExternalLink, Globe, Link2, Loader2 } from "lucide-react";
 import { apiPost, errorMessage } from "@/lib/api";
 import type { Project } from "@/lib/types";
 import { copyText } from "@/lib/hooks";
@@ -9,6 +9,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import ShareDialog, { type ShareTab } from "@/components/builder/ShareDialog";
 
 const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
@@ -17,6 +18,11 @@ export default function PublishPopover({ project }: { project: Project }) {
   const [open, setOpen] = useState(false);
   const [slug, setSlug] = useState(project.slug);
   const [gallery, setGallery] = useState(project.in_gallery);
+  const [share, setShare] = useState<ShareTab | null>(null);
+  const openShare = (t: ShareTab) => {
+    setOpen(false);
+    setShare(t);
+  };
   useEffect(() => {
     if (open) {
       setSlug(project.slug);
@@ -59,6 +65,7 @@ export default function PublishPopover({ project }: { project: Project }) {
   });
 
   return (
+    <>
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
         render={
@@ -130,6 +137,21 @@ export default function PublishPopover({ project }: { project: Project }) {
                   <ExternalLink className="size-3.5" />
                 </a>
               </div>
+              {project.custom_domain && (
+                <p className="flex items-center gap-1.5 text-xs text-[#666664]" data-testid="publish-domain-line">
+                  <span className={cn("size-1.5 rounded-full", project.domain_status === "connected" ? "bg-[#0F766E]" : "bg-[#D97706]")} />
+                  <span className="font-mono">{project.custom_domain}</span>
+                  {project.domain_status === "connected" ? "connected" : "not forwarding yet"}
+                </p>
+              )}
+              <div className="grid grid-cols-2 gap-2">
+                <Button size="sm" variant="outline" className="k-press" onClick={() => openShare("domain")} data-testid="publish-domain-btn">
+                  <Link2 className="size-3.5" /> Own domain
+                </Button>
+                <Button size="sm" variant="outline" className="k-press" onClick={() => openShare("embed")} data-testid="publish-embed-btn">
+                  <Code2 className="size-3.5" /> Embed
+                </Button>
+              </div>
               <button type="button" onClick={() => unpublish.mutate()} disabled={unpublish.isPending} className="text-xs text-[#666664] hover:text-[#DC2626]" data-testid="unpublish-btn">
                 Unpublish
               </button>
@@ -138,5 +160,7 @@ export default function PublishPopover({ project }: { project: Project }) {
         </div>
       </PopoverContent>
     </Popover>
+    <ShareDialog project={project} open={share !== null} onOpenChange={(o) => !o && setShare(null)} initialTab={share ?? "domain"} />
+    </>
   );
 }

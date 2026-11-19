@@ -102,9 +102,12 @@ export interface GalleryApp {
   updated_at: string;
 }
 
+export type EmailStatus = "sent" | "queued" | "failed" | "sent_manually";
+
 export interface EmailOut {
   ok: boolean;
   to: string;
+  status: EmailStatus;
 }
 
 export interface EmailLog {
@@ -113,7 +116,35 @@ export interface EmailLog {
   to: string;
   subject: string;
   ok: boolean;
+  status: EmailStatus;
   created_at: string;
+}
+
+export interface InboxEmail {
+  id: string;
+  project_id: string;
+  project_title: string;
+  kind: "builder" | "notify" | "receipt";
+  to: string;
+  subject: string;
+  text: string;
+  status: EmailStatus;
+  last_error: string;
+  read: boolean;
+  created_at: string;
+  sent_at: string | null;
+}
+
+export interface Inbox {
+  emails: InboxEmail[];
+  unread: number;
+  queued: number;
+  paused_reason: string;
+}
+
+export interface FlushOut {
+  sent: number;
+  queued: number;
 }
 
 export interface DayStat {

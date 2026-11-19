@@ -28,7 +28,12 @@ All assistant text passes `core.tidy` (no em/en dashes).
 
 ## Email (backend/lib/email.py, Emergent managed email; EMERGENT_EMAIL_KEY, EMAIL_FROM_NAME=Kozzi)
 Recipients are always server-side: (a) chat `send_email` -> the signed-in owner; (b) `kozzi.email.notifyOwner(subject, message)` -> the app owner; (c) `kozzi.email.sendReceipt(table, id)` -> the `email` field of that stored row, fixed template, once per row. Cap 30 sends per app per day. Every send is logged in `emails` and runs `_assert_safe_email`. Billing refusals (402/403/409) return 503 with an owner-facing explanation on owner routes and a generic message on public routes.
-**Status at time of writing: the provider returns 402 insufficient_credits for this account, so sends are logged as failed until the Universal Key balance/budget allows email.**
+**Outbox + Inbox (workaround while delivery is paused):** every email is stored in `emails` with html + plain `text`, `status` sent|queued|failed|sent_manually, `owner_id`, `attempts`, `last_error`, `read`.
+A billing refusal (EmailPaused) keeps it `queued` instead of erroring, so chat commands and app calls still succeed (EmailOut.status = "queued").
+Platform cron `.emergent/crons.yml` `email-outbox` (every 15 min) POSTs /api/cron/email-outbox (Bearer WEBHOOK_CRON_SECRET, idempotent by X-Webhook-Id in `cron_runs`) -> background `flush_outbox()` resends oldest-first and stops at the first billing refusal.
+Dashboard `?section=inbox` (sidebar unread count, Ctrl K "Open the Inbox"): list + detail, "Send from my email app" (mailto with to/subject/body), "I sent it" (status sent_manually, leaves the queue), "Copy text", "Try sending now" (POST /api/inbox/flush). API: GET /api/inbox, POST /inbox/{id}/read, /inbox/read-all, /inbox/{id}/mark-sent, /inbox/flush.
+Undeliverable recipients (e.g. example.com) return 422; other provider errors return 503 (never 502: the edge proxy replaces 502 bodies).
+**Status at time of writing: the provider returns 402 insufficient_credits for this account, so emails queue in the Inbox until the Universal Key budget allows email.**
 
 ## Own domain + embed (backend/routers/domains.py, frontend ShareDialog)
 Emergent hosting allows ONE custom domain per deployment, added by hand in the Emergent dashboard, so per-app domains work by registrar forwarding:

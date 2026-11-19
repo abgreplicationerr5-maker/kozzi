@@ -168,9 +168,13 @@ class EmailReceiptIn(BaseModel):
     record_id: str = Field(min_length=1, max_length=64)
 
 
+EmailStatus = Literal["sent", "queued", "failed", "sent_manually"]
+
+
 class EmailOut(BaseModel):
     ok: bool
     to: str = ""
+    status: EmailStatus = "sent"
 
 
 class EmailLog(BaseModel):
@@ -179,7 +183,35 @@ class EmailLog(BaseModel):
     to: str
     subject: str
     ok: bool
+    status: EmailStatus = "sent"
     created_at: datetime
+
+
+class InboxEmail(BaseModel):
+    id: str
+    project_id: str
+    project_title: str
+    kind: Literal["builder", "notify", "receipt"]
+    to: str
+    subject: str
+    text: str = ""
+    status: EmailStatus
+    last_error: str = ""
+    read: bool = False
+    created_at: datetime
+    sent_at: Optional[datetime] = None
+
+
+class Inbox(BaseModel):
+    emails: list[InboxEmail] = []
+    unread: int = 0
+    queued: int = 0
+    paused_reason: str = ""
+
+
+class FlushOut(BaseModel):
+    sent: int = 0
+    queued: int = 0
 
 
 # ---------- stats ----------

@@ -110,13 +110,15 @@ async def owner_ai(project_id: str, body: AiIn, user: dict = Depends(require_use
 @router.post("/projects/{project_id}/email/notify", response_model=EmailOut)
 async def owner_notify(project_id: str, body: EmailNotifyIn, user: dict = Depends(require_user)):
     doc = await core.owned_project(project_id, user["user_id"])
-    return EmailOut(ok=True, to=await email.send_owner_notification(doc, body.subject, body.message))
+    to, status = await email.send_owner_notification(doc, body.subject, body.message)
+    return EmailOut(ok=True, to=to, status=status)
 
 
 @router.post("/projects/{project_id}/email/receipt", response_model=EmailOut)
 async def owner_receipt(project_id: str, body: EmailReceiptIn, user: dict = Depends(require_user)):
     doc = await core.owned_project(project_id, user["user_id"])
-    return EmailOut(ok=True, to=await email.send_record_receipt(doc, body.table, body.record_id))
+    to, status = await email.send_record_receipt(doc, body.table, body.record_id)
+    return EmailOut(ok=True, to=to, status=status)
 
 
 @router.get("/projects/{project_id}/stats", response_model=Stats)
@@ -140,7 +142,8 @@ async def owner_stats(project_id: str, user: dict = Depends(require_user)):
         tables_total=await db.app_tables.count_documents({"project_id": pid, **core.LIVE}),
         emails_total=await db.emails.count_documents({"project_id": pid, "ok": True}),
         days=[DayStat(day=d, views=visits.get(d, 0), records=rec_days.get(d, 0)) for d in days],
-        recent_emails=[EmailLog(**{**e, "created_at": core.aware(e["created_at"])}) for e in emails],
+        recent_emails=[EmailLog(**{**e, "status": e.get("status") or ("sent" if e.get("ok") else "failed"),
+                                   "created_at": core.aware(e["created_at"])}) for e in emails],
     )
 
 
@@ -208,16 +211,16 @@ async def public_ai(slug: str, body: AiIn):
 async def public_notify(slug: str, body: EmailNotifyIn):
     doc = await core.public_project(slug)
     async with _public_email_errors():
-        await email.send_owner_notification(doc, body.subject, body.message)
-    return EmailOut(ok=True)  # never reveal the owner's address to visitors
+        _, status = await email.send_owner_notification(doc, body.subject, body.message)
+    return EmailOut(ok=True, status=status)  # never reveal the owner's address to visitors
 
 
 @router.post("/public/apps/{slug}/email/receipt", response_model=EmailOut)
 async def public_receipt(slug: str, body: EmailReceiptIn):
     doc = await core.public_project(slug)
     async with _public_email_errors():
-        to = await email.send_record_receipt(doc, body.table, body.record_id)
-    return EmailOut(ok=True, to=to)
+        to, status = await email.send_record_receipt(doc, body.table, body.record_id)
+    return EmailOut(ok=True, to=to, status=status)
 
 
 @asynccontextmanager

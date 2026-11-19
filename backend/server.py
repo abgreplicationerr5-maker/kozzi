@@ -19,7 +19,7 @@ try:  # launched as `backend.server` (the default)
 except ModuleNotFoundError:  # launched from inside backend/ as `server`
     from clerk_auth import clerk_router, require_user  # noqa: F401
 
-from routers import data, domains, me, projects, trash
+from routers import data, domains, inbox, me, projects, trash
 
 
 @asynccontextmanager
@@ -49,6 +49,7 @@ api_router.include_router(projects.router)
 api_router.include_router(data.router)
 api_router.include_router(trash.router)
 api_router.include_router(domains.router)
+api_router.include_router(inbox.router)
 
 app.include_router(clerk_router)  # /api/clerk/config and /api/__clerk/*
 # Include the router in the main app

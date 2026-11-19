@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth, useClerk } from "@clerk/react";
 import { AnimatePresence, motion } from "motion/react";
-import { CornerDownLeft, ExternalLink, FilePlus2, FolderOpen, LayoutDashboard, LogOut, Search, Settings, Trash2 } from "lucide-react";
+import { CornerDownLeft, ExternalLink, FilePlus2, FolderOpen, Inbox, LayoutDashboard, LogOut, Search, Settings, Trash2 } from "lucide-react";
 import { apiGet } from "@/lib/api";
 import type { ProjectSummary } from "@/lib/types";
 import { useCreateProject } from "@/lib/hooks";
@@ -63,6 +63,7 @@ export default function CommandMenu() {
     const base: Item[] = [
       { id: "new", label: "New blank project", group: "Actions", icon: FilePlus2, run: () => create.mutate("") },
       { id: "dashboard", label: "Go to dashboard", group: "Actions", icon: LayoutDashboard, run: go("/dashboard") },
+      { id: "inbox", label: "Open the Inbox", hint: "emails from Kozzi and your apps", group: "Actions", icon: Inbox, run: go("/dashboard?section=inbox") },
       { id: "bin", label: "Open the Bin", hint: "restore deleted items", group: "Actions", icon: Trash2, run: go("/dashboard?section=bin") },
       { id: "settings", label: "Settings", group: "Actions", icon: Settings, run: go("/dashboard?settings=1") },
       { id: "signout", label: "Sign out", group: "Actions", icon: LogOut, run: () => void signOut({ redirectUrl: "/" }) },

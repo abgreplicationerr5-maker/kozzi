@@ -1,0 +1,8 @@
+crons:
+  - name: email-outbox
+    description: "Resends queued Kozzi emails every 15 minutes once email delivery is available again"
+    cron: "*/15 * * * *"
+    # Cron endpoints must ack 2xx immediately; enqueue/background the actual work.
+    endpoint: "{{BASE_URL}}/api/cron/email-outbox"
+    method: POST
+    enabled: true

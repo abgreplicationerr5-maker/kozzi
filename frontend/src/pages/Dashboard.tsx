@@ -5,11 +5,12 @@ import { UserButton, useUser } from "@clerk/react";
 import { AnimatePresence, motion } from "motion/react";
 import { formatDistanceToNow } from "date-fns";
 import {
-  Command, Copy, ExternalLink, FolderKanban, Menu, PanelLeftClose, PanelLeftOpen, PenLine, RotateCcw, Search, Settings, Trash2,
+  Command, Copy, ExternalLink, FolderKanban, Inbox as InboxIcon, Menu, PanelLeftClose, PanelLeftOpen, PenLine, RotateCcw, Search, Settings, Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { apiDelete, apiGet, apiPatch, apiPost, errorMessage } from "@/lib/api";
-import type { Device, Me, ProjectSummary, Trash } from "@/lib/types";
+import type { Device, Inbox, Me, ProjectSummary, Trash } from "@/lib/types";
+import InboxSection from "@/components/InboxSection";
 import { useCreateProject, useDuplicateProject } from "@/lib/hooks";
 import { takePending } from "@/lib/pending";
 import { cn } from "@/lib/utils";
@@ -32,7 +33,7 @@ const STARTERS = [
 ];
 
 const DEVICE_LABELS: Record<string, string> = { desktop: "Desktop", tablet: "Tablet", phone: "Phone" };
-type Section = "projects" | "bin";
+type Section = "projects" | "inbox" | "bin";
 
 function ProjectCard({ p, onDelete }: { p: ProjectSummary; onDelete: (p: ProjectSummary) => void }) {
   const dup = useDuplicateProject();
@@ -91,17 +92,18 @@ function ProjectCard({ p, onDelete }: { p: ProjectSummary; onDelete: (p: Project
   );
 }
 
-function SidebarNav({ collapsed, onSettings, section, setSection, binCount }: {
-  collapsed: boolean; onSettings: () => void; section: Section; setSection: (s: Section) => void; binCount: number;
+function SidebarNav({ collapsed, onSettings, section, setSection, binCount, unread }: {
+  collapsed: boolean; onSettings: () => void; section: Section; setSection: (s: Section) => void; binCount: number; unread: number;
 }) {
   const items = [
-    { id: "projects" as const, label: "Projects", icon: FolderKanban },
-    { id: "bin" as const, label: "Bin", icon: Trash2 },
+    { id: "projects" as const, label: "Projects", icon: FolderKanban, count: 0 },
+    { id: "inbox" as const, label: "Inbox", icon: InboxIcon, count: unread },
+    { id: "bin" as const, label: "Bin", icon: Trash2, count: binCount },
   ];
-  const row = "k-press flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-left";
+  const row = "k-press relative flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-left";
   return (
     <nav className="flex flex-1 flex-col gap-1 px-2 py-3 text-sm">
-      {items.map(({ id, label, icon: Icon }) => (
+      {items.map(({ id, label, icon: Icon, count }) => (
         <button
           key={id}
           type="button"
@@ -112,7 +114,10 @@ function SidebarNav({ collapsed, onSettings, section, setSection, binCount }: {
         >
           <Icon className="size-4 shrink-0" strokeWidth={1.7} />
           {!collapsed && <span className="flex-1">{label}</span>}
-          {!collapsed && id === "bin" && binCount > 0 && <span className="text-[11px] tabular-nums text-[#9A9A97]" data-testid="sidebar-bin-count">{binCount}</span>}
+          {!collapsed && count > 0 && (
+            <span className={cn("text-[11px] tabular-nums", id === "inbox" ? "font-medium text-[#0F766E]" : "text-[#9A9A97]")} data-testid={`sidebar-${id}-count`}>{count}</span>
+          )}
+          {collapsed && id === "inbox" && count > 0 && <span className="absolute ml-5 -mt-4 size-1.5 rounded-full bg-[#0F766E]" />}
         </button>
       ))}
       <button type="button" data-testid="sidebar-settings-btn" onClick={onSettings} title="Settings" className={cn(row, "text-[#666664] hover:bg-white/60 hover:text-[#111111]")}>
@@ -218,6 +223,8 @@ function BinRow({ title, sub, onRestore, pending, testId }: { title: string; sub
 function BinSection() {
   const qc = useQueryClient();
   const trash = useQuery({ queryKey: ["trash"], queryFn: () => apiGet<Trash>("/trash") });
+  const inbox = useQuery({ queryKey: ["inbox"], queryFn: () => apiGet<Inbox>("/inbox"), refetchInterval: 30000 });
+  const unread = inbox.data?.unread ?? 0;
   const restore = useMutation({
     mutationFn: (path: string) => apiPost(path),
     onSuccess: () => {
@@ -273,9 +280,10 @@ export default function Dashboard() {
   const create = useCreateProject();
   const dupPending = useDuplicateProject(true);
 
-  const section: Section = params.get("section") === "bin" ? "bin" : "projects";
+  const rawSection = params.get("section");
+  const section: Section = rawSection === "bin" || rawSection === "inbox" ? rawSection : "projects";
   const settingsOpen = params.get("settings") === "1";
-  const setSection = (s: Section) => setParams(s === "bin" ? { section: "bin" } : {});
+  const setSection = (s: Section) => setParams(s === "projects" ? {} : { section: s });
   const setSettingsOpen = (o: boolean) => {
     const next = new URLSearchParams(params);
     if (o) next.set("settings", "1");
@@ -285,6 +293,8 @@ export default function Dashboard() {
 
   const me = useQuery({ queryKey: ["me"], queryFn: () => apiGet<Me>("/me") });
   const trash = useQuery({ queryKey: ["trash"], queryFn: () => apiGet<Trash>("/trash") });
+  const inbox = useQuery({ queryKey: ["inbox"], queryFn: () => apiGet<Inbox>("/inbox"), refetchInterval: 30000 });
+  const unread = inbox.data?.unread ?? 0;
   const projects = useQuery({
     queryKey: ["projects"],
     queryFn: () => apiGet<ProjectSummary[]>("/projects"),
@@ -349,7 +359,7 @@ export default function Dashboard() {
             {collapsed ? <PanelLeftOpen className="size-4" /> : <PanelLeftClose className="size-4" />}
           </Button>
         </div>
-        <SidebarNav collapsed={collapsed} onSettings={() => setSettingsOpen(true)} section={section} setSection={setSection} binCount={binCount} />
+        <SidebarNav collapsed={collapsed} onSettings={() => setSettingsOpen(true)} section={section} setSection={setSection} binCount={binCount} unread={unread} />
         <div className={cn("flex items-center gap-2.5 border-t border-[#E5E5E3] p-3", collapsed && "justify-center")}>
           <UserButton />
           {!collapsed && (
@@ -364,7 +374,7 @@ export default function Dashboard() {
       <Sheet open={mobileNav} onOpenChange={setMobileNav}>
         <SheetContent side="left" className="w-64 bg-[#F4F4F2] p-0">
           <SheetTitle className="flex h-14 items-center border-b border-[#E5E5E3] px-4"><Logo to="/dashboard" /></SheetTitle>
-          <SidebarNav collapsed={false} binCount={binCount} onSettings={() => { setMobileNav(false); setSettingsOpen(true); }} section={section} setSection={(s) => { setSection(s); setMobileNav(false); }} />
+          <SidebarNav collapsed={false} binCount={binCount} unread={unread} onSettings={() => { setMobileNav(false); setSettingsOpen(true); }} section={section} setSection={(s) => { setSection(s); setMobileNav(false); }} />
         </SheetContent>
       </Sheet>
 
@@ -429,6 +439,8 @@ export default function Dashboard() {
                 </div>
               )}
             </section>
+          ) : section === "inbox" ? (
+            <InboxSection />
           ) : (
             <BinSection />
           )}

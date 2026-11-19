@@ -41,7 +41,11 @@ INDEXES: dict[str, list[IndexModel]] = {
         IndexModel([("project_id", ASCENDING), ("day", ASCENDING)], name="project_day"),
         IndexModel([("project_id", ASCENDING), ("created_at", DESCENDING)], name="project_created"),
         IndexModel([("project_id", ASCENDING), ("record_id", ASCENDING)], name="project_record"),
+        IndexModel([("owner_id", ASCENDING), ("created_at", DESCENDING)], name="owner_created"),
+        IndexModel([("status", ASCENDING), ("created_at", ASCENDING)], name="status_created"),
+        IndexModel([("id", ASCENDING)], name="id"),
     ],
+    "cron_runs": [IndexModel([("run_id", ASCENDING)], name="run_id", unique=True)],
 }
 
 

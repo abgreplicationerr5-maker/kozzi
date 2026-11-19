@@ -10,6 +10,7 @@ import logging
 import os
 import re
 import uuid
+from datetime import timedelta
 from html import escape
 from html.parser import HTMLParser
 from urllib.parse import urlparse
@@ -27,6 +28,10 @@ logger = logging.getLogger(__name__)
 
 EMAIL_BASE_URL = "https://integrations.emergentagent.com"  # constant on purpose, survives deployment
 DAILY_CAP_PER_APP = 30
+class EmailPaused(HTTPException):
+    """The provider refused for a billing reason. The email is kept in the outbox and resent later."""
+
+
 # Shown to the app owner (builder chat, Activity). Visitors of live apps get a generic message.
 OWNER_PAUSED = {
     "insufficient_credits": "Email is paused: the Emergent Universal Key balance can't cover email sends right now. Raise its budget or turn on auto top-up under Universal Key in Buy Credits, then retry",
@@ -134,14 +139,17 @@ async def _send(*, to: str, subject: str, html: str) -> str | None:
             code = ""
         if code in ("insufficient_credits", "integration_disabled", "daily_limit_reached"):
             logger.warning("Email paused: %s (%s)", code, e.response.status_code)
-            raise HTTPException(status_code=503, detail=OWNER_PAUSED.get(code, "Email is temporarily unavailable"))
+            raise EmailPaused(status_code=503, detail=OWNER_PAUSED.get(code, "Email is temporarily unavailable"))
         logger.error("Email send failed: %s %s", e.response.status_code, e.response.text[:300])
-        raise HTTPException(status_code=502, detail="Failed to send email")
+        if code == "undeliverable_recipient":
+            raise HTTPException(status_code=422, detail="That address looks undeliverable, so the email was not sent")
+        # 503, not 502: the edge proxy replaces 502 bodies with its own page
+        raise HTTPException(status_code=503, detail="The email service rejected this email")
     except HTTPException:
         raise
     except Exception as e:  # network errors
         logger.error("Email send error: %s", e)
-        raise HTTPException(status_code=502, detail="Failed to send email")
+        raise HTTPException(status_code=503, detail="Couldn't reach the email service")
 
 
 # ---------- templates ----------
@@ -206,44 +214,77 @@ def record_email(data: dict) -> str:
     return ""
 
 
-# ---------- logging + caps ----------
+# ---------- outbox: every email is stored, shown in the Kozzi Inbox, and resent if paused ----------
+
+MAX_ATTEMPTS = 200          # about two days of 15-minute resend runs
+QUEUE_DAYS = 7
+
 
 async def _check_cap(project_id: str) -> None:
-    if await db.emails.count_documents({"project_id": project_id, "day": today_iso(), "ok": True}) >= DAILY_CAP_PER_APP:
+    used = await db.emails.count_documents({"project_id": project_id, "day": today_iso(), "status": {"$in": ["sent", "queued"]}})
+    if used >= DAILY_CAP_PER_APP:
         raise HTTPException(status_code=429, detail="This app has reached today's email limit")
 
 
-async def _log(project_id: str, kind: str, to: str, subject: str, ok: bool, record_id: str | None = None) -> None:
-    await db.emails.insert_one({
-        "id": str(uuid.uuid4()), "project_id": project_id, "kind": kind, "to": to, "subject": subject,
-        "ok": ok, "record_id": record_id, "day": today_iso(), "created_at": core.now(),
-    })
+async def _deliver(project: dict, kind: str, to: str, subject: str, html: str, text: str, record_id: str | None = None) -> str:
+    """Store the email, try to send it now, and keep it queued if sending is paused.
+    Returns the status: sent | queued. Raises for any other failure."""
+    _assert_safe_email(subject, html)
+    doc = {
+        "id": str(uuid.uuid4()), "project_id": project["id"], "owner_id": project["owner_id"], "kind": kind,
+        "to": to, "subject": subject, "html": html, "text": text, "record_id": record_id,
+        "status": "queued", "ok": False, "attempts": 0, "last_error": "", "read": False,
+        "day": today_iso(), "created_at": core.now(), "sent_at": None,
+    }
+    await db.emails.insert_one(doc)
+    return await _attempt(doc)
 
 
-async def _deliver(project_id: str, kind: str, to: str, subject: str, html: str, record_id: str | None = None) -> None:
+async def _attempt(doc: dict) -> str:
     try:
-        await _send(to=to, subject=subject, html=html)
-    except Exception:
-        await _log(project_id, kind, to, subject, False, record_id)
+        await _send(to=doc["to"], subject=doc["subject"], html=doc["html"])
+    except EmailPaused as e:
+        await db.emails.update_one({"id": doc["id"]}, {"$set": {"status": "queued", "last_error": str(e.detail)}, "$inc": {"attempts": 1}})
+        return "queued"
+    except HTTPException as e:
+        await db.emails.update_one({"id": doc["id"]}, {"$set": {"status": "failed", "last_error": str(e.detail)}, "$inc": {"attempts": 1}})
         raise
-    await _log(project_id, kind, to, subject, True, record_id)
+    await db.emails.update_one({"id": doc["id"]}, {"$set": {"status": "sent", "ok": True, "last_error": "", "sent_at": core.now()}, "$inc": {"attempts": 1}})
+    return "sent"
+
+
+async def flush_outbox(owner_id: str | None = None, limit: int = 100) -> dict:
+    """Resend queued emails, oldest first. Stops at the first billing refusal since the rest would fail too."""
+    q: dict = {"status": "queued", "created_at": {"$gte": core.now() - timedelta(days=QUEUE_DAYS)}, "attempts": {"$lt": MAX_ATTEMPTS}}
+    if owner_id:
+        q["owner_id"] = owner_id
+    sent = 0
+    for doc in await db.emails.find(q, {"_id": 0}).sort("created_at", 1).to_list(limit):
+        try:
+            if await _attempt(doc) == "queued":
+                break
+            sent += 1
+        except HTTPException:
+            continue
+    left = await db.emails.count_documents({k: v for k, v in q.items() if k != "attempts"})
+    return {"sent": sent, "queued": left}
 
 
 # ---------- the three send paths ----------
 
-async def send_builder_email(project: dict, subject: str, body: str) -> str:
+async def send_builder_email(project: dict, subject: str, body: str) -> tuple[str, str]:
     """Kozzi chat: 'email me a summary'. Always goes to the signed-in owner."""
     to = await owner_email(project["owner_id"])
     if not to:
         raise HTTPException(status_code=409, detail="Your account has no email address")
     await _check_cap(project["id"])
     subject = core.tidy(subject.strip())[:120] or f"Update on {project['title']}"
-    html = _wrap(subject, _paragraphs(core.tidy(body)[:6000]), f"You asked Kozzi for this while editing {project['title']}.")
-    await _deliver(project["id"], "builder", to, subject, html)
-    return to
+    body = core.tidy(body)[:6000]
+    html = _wrap(subject, _paragraphs(body), f"You asked Kozzi for this while editing {project['title']}.")
+    return to, await _deliver(project, "builder", to, subject, html, body)
 
 
-async def send_owner_notification(project: dict, subject: str, message: str) -> str:
+async def send_owner_notification(project: dict, subject: str, message: str) -> tuple[str, str]:
     """kozzi.email.notifyOwner() from inside an app: goes only to the app's owner."""
     to = await owner_email(project["owner_id"])
     if not to:
@@ -251,11 +292,10 @@ async def send_owner_notification(project: dict, subject: str, message: str) -> 
     await _check_cap(project["id"])
     full_subject = f"{project['title']}: {subject.strip()}"[:140]
     html = _wrap(subject.strip(), _paragraphs(message), f"Your app {project['title']} sent this notification.")
-    await _deliver(project["id"], "notify", to, full_subject, html)
-    return to
+    return to, await _deliver(project, "notify", to, full_subject, html, message.strip())
 
 
-async def send_record_receipt(project: dict, table: str, record_id: str) -> str:
+async def send_record_receipt(project: dict, table: str, record_id: str) -> tuple[str, str]:
     """kozzi.email.sendReceipt() from inside an app: a fixed confirmation to the address
     stored in that record's email field, once per record."""
     doc = await db.records.find_one({"project_id": project["id"], "table": table, "id": record_id, **core.LIVE}, {"_id": 0})
@@ -264,23 +304,24 @@ async def send_record_receipt(project: dict, table: str, record_id: str) -> str:
     to = record_email(doc.get("data", {}))
     if not to:
         raise HTTPException(status_code=422, detail="That record has no valid email field")
-    if await db.emails.find_one({"project_id": project["id"], "record_id": record_id, "ok": True}, {"_id": 1}):
+    if await db.emails.find_one({"project_id": project["id"], "record_id": record_id, "status": {"$in": ["sent", "queued", "sent_manually"]}}, {"_id": 1}):
         raise HTTPException(status_code=409, detail="A confirmation was already sent for this record")
     await _check_cap(project["id"])
-    rows = []
+    rows, lines = [], []
     for k, v in list(doc.get("data", {}).items())[:12]:
         if isinstance(v, (dict, list)) or v in ("", None):
             continue
+        label = str(k).replace("_", " ")
         rows.append(
-            f'<tr><td style="padding:6px 12px 6px 0;color:#666664;vertical-align:top">{escape(str(k).replace("_", " "))}</td>'
+            f'<tr><td style="padding:6px 12px 6px 0;color:#666664;vertical-align:top">{escape(label)}</td>'
             f'<td style="padding:6px 0">{escape(str(v)[:200])}</td></tr>'
         )
+        lines.append(f"- {label}: {str(v)[:200]}")
     subject = f"Confirmation from {project['title']}"[:140]
+    intro = f"Thanks, your submission to {project['title']} was received. Here is what was saved:"
     body = (
-        f'<p style="margin:0 0 14px;line-height:1.6">Thanks, your submission to {escape(project["title"])} was received. '
-        'Here is what was saved:</p>'
+        f'<p style="margin:0 0 14px;line-height:1.6">{escape(intro)}</p>'
         f'<table role="presentation" cellpadding="0" cellspacing="0" style="font-size:14px">{"".join(rows)}</table>'
     )
     html = _wrap("Submission received", body, f"You are getting this because this address was entered in {project['title']}.")
-    await _deliver(project["id"], "receipt", to, subject, html, record_id)
-    return to
+    return to, await _deliver(project, "receipt", to, subject, html, intro + "\n\n" + "\n".join(lines), record_id)

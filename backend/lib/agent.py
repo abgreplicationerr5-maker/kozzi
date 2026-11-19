@@ -168,8 +168,12 @@ async def _execute(project_id: str, action: dict) -> str:
         return f"Restored version {number}. It is saved as version {new_number}"
 
     if kind == "send_email":
-        to = await email.send_builder_email(doc, str(action.get("subject") or ""), str(action.get("body") or ""))
-        return f"Emailed {to}: {str(action.get('subject') or '').strip()[:80]}"
+        subject = str(action.get("subject") or "").strip()[:80]
+        to, status = await email.send_builder_email(doc, subject, str(action.get("body") or ""))
+        if status == "queued":
+            return (f"Wrote the email for {to}: {subject}. Delivery is paused on the Emergent account, so it is in your "
+                    "Kozzi Inbox now and will be sent automatically when sending resumes")
+        return f"Emailed {to}: {subject}"
 
     raise ValueError(f"Unknown command {kind}")
 

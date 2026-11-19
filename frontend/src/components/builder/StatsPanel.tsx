@@ -1,10 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
 import { format, formatDistanceToNow, parseISO } from "date-fns";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis } from "recharts";
-import { Mail, X } from "lucide-react";
+import { Check, Clock, Mail, X } from "lucide-react";
 import { apiGet } from "@/lib/api";
 import type { Stats } from "@/lib/types";
 
+const STATUS_LABEL = { sent: "Sent", queued: "Waiting to send", failed: "Failed", sent_manually: "Sent by you" } as const;
 const KIND_LABEL = { builder: "From chat", notify: "Owner alert", receipt: "Confirmation" } as const;
 
 export default function StatsPanel({ projectId, published }: { projectId: string; published: boolean }) {
@@ -67,9 +68,13 @@ export default function StatsPanel({ projectId, published }: { projectId: string
           <ul className="mt-2 divide-y divide-[#F0F0EE]" data-testid="stats-emails-list">
             {s.recent_emails.map((e) => (
               <li key={e.id} className="flex items-center gap-3 py-2 text-[13px]" data-testid={`stats-email-${e.id}`}>
-                {e.ok ? <Mail className="size-3.5 shrink-0 text-[#0F766E]" /> : <X className="size-3.5 shrink-0 text-[#DC2626]" />}
+                {e.status === "sent" ? <Mail className="size-3.5 shrink-0 text-[#0F766E]" />
+                  : e.status === "queued" ? <Clock className="size-3.5 shrink-0 text-[#D97706]" />
+                  : e.status === "sent_manually" ? <Check className="size-3.5 shrink-0 text-[#0F766E]" />
+                  : <X className="size-3.5 shrink-0 text-[#DC2626]" />}
                 <span className="min-w-0 flex-1 truncate">{e.subject}</span>
                 <span className="hidden truncate text-xs text-[#666664] sm:inline">{KIND_LABEL[e.kind]} to {e.to}</span>
+                <span className="shrink-0 text-[11px] text-[#666664]" data-testid={`stats-email-status-${e.id}`}>{STATUS_LABEL[e.status]}</span>
                 <span className="shrink-0 text-[11px] text-[#9A9A97]">{formatDistanceToNow(new Date(e.created_at), { addSuffix: true })}</span>
               </li>
             ))}

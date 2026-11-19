@@ -1,0 +1,237 @@
+{
+  "theme": "light",
+  "archetype": "SWISS & HIGH-CONTRAST / TACTICAL MINIMALISM (Linear, Notion, Vercel inspired)",
+  "concept": "Kozzi — Alabaster Canvas with Pure White Floating Sheets, Hairline Borders, Obsidian and Forest-Emerald Accents, and Sub-pixel Craftsmanship",
+  "colors": {
+    "surfaces": [
+      {
+        "name": "page",
+        "kind": "solid",
+        "bg": "#F9F9F8",
+        "on_bg": "#111111",
+        "on_bg_muted": "#666664",
+        "roles": {
+          "border": "#E5E5E3",
+          "link": "#111111",
+          "error": "#DC2626",
+          "success": "#0F766E",
+          "warning": "#D97706"
+        }
+      },
+      {
+        "name": "panel",
+        "kind": "solid",
+        "bg": "#FFFFFF",
+        "on_bg": "#111111",
+        "on_bg_muted": "#666664",
+        "roles": {
+          "border": "#E5E5E3",
+          "border_active": "#111111",
+          "link": "#0F766E",
+          "error": "#DC2626",
+          "success": "#0F766E"
+        }
+      },
+      {
+        "name": "sidebar",
+        "kind": "solid",
+        "bg": "#F4F4F2",
+        "on_bg": "#111111",
+        "on_bg_muted": "#666664",
+        "roles": {
+          "border": "#E5E5E3",
+          "active_item": "#FFFFFF",
+          "active_text": "#111111"
+        }
+      },
+      {
+        "name": "header_glass",
+        "kind": "glass",
+        "contrast_against": "#F9F9F8",
+        "guarantee": "backdrop-blur-xl bg-[#F9F9F8]/85 border-b border-[#E5E5E3]",
+        "on_bg": "#111111",
+        "on_bg_muted": "#666664",
+        "roles": {
+          "link": "#111111",
+          "error": "#DC2626",
+          "success": "#0F766E"
+        }
+      },
+      {
+        "name": "inverse",
+        "kind": "solid",
+        "bg": "#111111",
+        "on_bg": "#F9F9F8",
+        "on_bg_muted": "#A1A1AA",
+        "roles": {
+          "border": "#27272A",
+          "link": "#34D399",
+          "error": "#F87171",
+          "success": "#2DD4BF"
+        }
+      },
+      {
+        "name": "code_editor",
+        "kind": "solid",
+        "bg": "#18181B",
+        "on_bg": "#FAFAFA",
+        "on_bg_muted": "#A1A1AA",
+        "roles": {
+          "border": "#27272A",
+          "keyword": "#F472B6",
+          "string": "#34D399",
+          "tag": "#60A5FA",
+          "comment": "#71717A"
+        }
+      },
+      {
+        "name": "badge_emerald",
+        "kind": "solid",
+        "bg": "#ECFDF5",
+        "on_bg": "#065F46",
+        "on_bg_muted": "#047857"
+      },
+      {
+        "name": "badge_slate",
+        "kind": "solid",
+        "bg": "#F4F4F2",
+        "on_bg": "#18181B",
+        "on_bg_muted": "#71717A"
+      },
+      {
+        "name": "badge_amber",
+        "kind": "solid",
+        "bg": "#FFFBEB",
+        "on_bg": "#92400E",
+        "on_bg_muted": "#B45309"
+      }
+    ],
+    "accent": "#0F766E",
+    "on_accent": "#FFFFFF",
+    "accent_obsidian": "#111111",
+    "on_accent_obsidian": "#FFFFFF",
+    "borders": {
+      "hairline": "#E5E5E3",
+      "hairline_dark": "#D4D4D0",
+      "focus": "#111111"
+    }
+  },
+  "typography": {
+    "font_family_heading": "'Geist Variable', sans-serif",
+    "font_family_body": "'Geist Variable', sans-serif",
+    "font_family_mono": "'Geist Mono Variable', 'JetBrains Mono Variable', monospace",
+    "css_import": "@import \"@fontsource-variable/geist\";\n@import \"@fontsource-variable/geist-mono\";",
+    "scale_px": {
+      "display": 60,
+      "h1": 48,
+      "h2": 32,
+      "h3": 22,
+      "body": 16,
+      "caption": 14,
+      "micro": 12
+    },
+    "hierarchy": {
+      "hero_title": "text-4xl sm:text-5xl lg:text-6xl font-medium tracking-tight text-[#111111] leading-[1.08]",
+      "section_title": "text-2xl sm:text-3xl font-medium tracking-tight text-[#111111]",
+      "subsection_title": "text-xl sm:text-2xl font-medium tracking-tight text-[#111111]",
+      "card_title": "text-base sm:text-lg font-medium tracking-tight text-[#111111]",
+      "body": "text-base font-normal text-[#111111] leading-relaxed",
+      "body_muted": "text-sm sm:text-base font-normal text-[#666664] leading-relaxed",
+      "label_overline": "text-xs font-mono uppercase tracking-[0.18em] text-[#666664]",
+      "code": "font-mono text-xs sm:text-sm text-[#111111]"
+    }
+  },
+  "entry_surfaces": {
+    "/": "spacious hero with centered interactive prompt box over alabaster canvas, sample apps gallery below fold",
+    "/dashboard": "split dashboard with collapsible left sidebar, active prompt bar top, and searchable projects grid right",
+    "/builder/:projectId": "split builder workspace with left AI chat conversation drawer and right preview/data/code canvas",
+    "/app/:slug": "clean edge-to-edge hosted sandbox runner with floating status badge and Kozzi attribution chip"
+  },
+  "visual_enhancers": {
+    "canvas_texture": "Subtle #E5E5E3 1px grid pattern or pure alabaster #F9F9F8 with high-precision hairline borders",
+    "shadows": {
+      "subtle": "0 1px 2px 0 rgba(0, 0, 0, 0.03)",
+      "card": "0 1px 3px 0 rgba(0, 0, 0, 0.04), 0 1px 2px -1px rgba(0, 0, 0, 0.04)",
+      "modal": "0 12px 32px -4px rgba(0, 0, 0, 0.08), 0 4px 12px -2px rgba(0, 0, 0, 0.04)",
+      "focus_ring": "0 0 0 2px #FFFFFF, 0 0 0 4px #111111"
+    },
+    "borders": "1px solid #E5E5E3 (always crisp, no blurred double shadows)",
+    "radii": {
+      "button": "rounded-lg",
+      "card": "rounded-xl",
+      "input": "rounded-lg",
+      "badge": "rounded-full",
+      "modal": "rounded-2xl"
+    },
+    "interactive_feedback": "Tactile micro-lifts (hover:-translate-y-[1px]), active:scale-[0.985] on buttons, smooth border-color darken from #E5E5E3 to #111111 on card hover."
+  },
+  "motion": {
+    "engine": "motion/react",
+    "transitions": {
+      "spring_snappy": "transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.18s ease, background-color 0.18s ease",
+      "drawer_slide": "transition: transform 0.24s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease",
+      "fade_scale": "transition: opacity 0.2s ease, transform 0.2s cubic-bezier(0.16, 1, 0.3, 1)"
+    },
+    "ai_pulse": "Subtle breathing opacity on the AI indicator (0.4 to 1.0) with an emerald/obsidian dot, not a flashing neon strobe"
+  },
+  "layouts_and_grids": {
+    "landing": {
+      "hero": "max-w-4xl mx-auto pt-24 pb-20 px-6 text-center flex flex-col items-center",
+      "prompt_box": "w-full max-w-2xl bg-white border border-[#E5E5E3] rounded-2xl p-3 shadow-sm hover:border-[#111111]/40 focus-within:border-[#111111] focus-within:ring-4 focus-within:ring-[#111111]/5 transition-all text-left",
+      "gallery_grid": "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl mx-auto px-6 py-16",
+      "pricing_grid": "grid grid-cols-1 md:grid-cols-3 gap-8 max-w-5xl mx-auto px-6 py-20"
+    },
+    "dashboard": {
+      "layout": "flex h-screen bg-[#F9F9F8] overflow-hidden",
+      "sidebar": "w-64 border-r border-[#E5E5E3] bg-[#F4F4F2] flex flex-col shrink-0 transition-all",
+      "content": "flex-1 flex flex-col min-w-0 overflow-y-auto p-8",
+      "projects_grid": "grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5"
+    },
+    "builder": {
+      "layout": "flex flex-col h-screen bg-[#F9F9F8] overflow-hidden",
+      "topbar": "h-14 border-b border-[#E5E5E3] bg-white px-4 flex items-center justify-between shrink-0",
+      "workspace": "flex-1 flex min-h-0",
+      "chat_panel": "w-96 border-r border-[#E5E5E3] bg-white flex flex-col shrink-0",
+      "canvas_panel": "flex-1 bg-[#F9F9F8] flex flex-col min-w-0"
+    }
+  },
+  "component_paths": {
+    "css_entry": "/app/frontend/src/index.css",
+    "app_shell": "/app/frontend/src/App.tsx",
+    "pages": {
+      "landing": "/app/frontend/src/pages/Landing.tsx",
+      "dashboard": "/app/frontend/src/pages/Dashboard.tsx",
+      "builder": "/app/frontend/src/pages/Builder.tsx",
+      "hosted_app": "/app/frontend/src/pages/HostedApp.tsx"
+    },
+    "components": {
+      "navbar": "/app/frontend/src/components/Navbar.tsx",
+      "footer": "/app/frontend/src/components/Footer.tsx",
+      "prompt_hero_input": "/app/frontend/src/components/PromptHeroInput.tsx",
+      "sample_app_card": "/app/frontend/src/components/SampleAppCard.tsx",
+      "project_card": "/app/frontend/src/components/ProjectCard.tsx",
+      "builder_chat": "/app/frontend/src/components/builder/BuilderChat.tsx",
+      "builder_preview": "/app/frontend/src/components/builder/BuilderPreview.tsx",
+      "builder_data_editor": "/app/frontend/src/components/builder/BuilderDataEditor.tsx",
+      "builder_code_viewer": "/app/frontend/src/components/builder/BuilderCodeViewer.tsx",
+      "publish_popover": "/app/frontend/src/components/builder/PublishPopover.tsx",
+      "version_history_drawer": "/app/frontend/src/components/builder/VersionHistoryDrawer.tsx"
+    }
+  },
+  "instructions_to_main_agent": [
+    "Strictly follow the user's color palette: Canvas #F9F9F8, Surface #FFFFFF, Hairline borders #E5E5E3, Ink #111111, Secondary text #666664, Accent #111111 or #0F766E. Absolutely NO neon, loud gradients, or cartoonish graphics.",
+    "Use Geist Variable for sans-serif UI typography and Geist Mono for code/data metrics.",
+    "Every sample app (Client Tracker, Habit Log, Event RSVP, Inventory Manager, Personal CRM, Invoice Generator) must be fully functional with working interactive sandboxed iframe previews, real CRUD operations, and live editable data tables.",
+    "The builder preview must support realistic device frame toggles (Desktop 100%, Tablet 768px, Phone 375px) with iframe sandbox security.",
+    "The Builder chat must support conversational prompts (e.g. 'Add a search bar', 'Change color theme to warm amber', 'Add an export to CSV button') and immediately update the live sandboxed code and version history.",
+    "Provide one-click 'Duplicate', 'Visit Live' (/app/:slug), and 'Publish' actions with instant clipboard copy and clean sonner toast notifications.",
+    "Ensure every interactive element has a clear role-based data-testid (e.g. data-testid='prompt-submit-btn', data-testid='builder-publish-btn', data-testid='tab-preview-btn').",
+    "Never render transparent dropdowns or dialogs; always specify bg-white with 1px border border-[#E5E5E3] and shadow-lg.",
+    "Follow base-ui component conventions (no asChild, use render prop or styled links)."
+  ],
+  "accessibility": {
+    "contrast_check": "All text tokens meet APCA and WCAG AA (>4.5:1). #111111 on #F9F9F8 is 17.2:1. #666664 on #FFFFFF is 5.4:1. #0F766E on #FFFFFF is 5.1:1.",
+    "focus_states": "Visible high-contrast ring-2 ring-[#111111] ring-offset-2",
+    "reduced_motion": "All transitions fallback gracefully to instant opacity switches if prefers-reduced-motion is active."
+  }
+}

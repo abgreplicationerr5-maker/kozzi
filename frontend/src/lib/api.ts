@@ -2,14 +2,13 @@
 // same code works in dev (Vite proxies /api → :8001) and behind a single origin in prod.
 const BASE = "/api";
 
-// Fields are declared, not constructor parameter properties: tsconfig sets
-// erasableSyntaxOnly, which rejects `constructor(readonly status: number)`.
 export class ApiError extends Error {
   status: number;
   body: unknown;
 
   constructor(status: number, body: unknown) {
-    super(`request failed with ${status}`);
+    const detail = (body as { detail?: unknown } | null)?.detail;
+    super(typeof detail === "string" ? detail : `Request failed (${status})`);
     this.name = "ApiError";
     this.status = status;
     this.body = body;
@@ -18,15 +17,23 @@ export class ApiError extends Error {
 
 type JsonBody = unknown;
 
+// Clerk session tokens: AuthBridge registers getToken() here so every call carries it.
+let tokenGetter: (() => Promise<string | null>) | null = null;
+export function setTokenGetter(fn: (() => Promise<string | null>) | null) {
+  tokenGetter = fn;
+}
+
 async function request<T>(method: string, path: string, body?: JsonBody): Promise<T> {
-  // Auth rides the httpOnly session cookie automatically — never add auth headers here.
+  const headers: Record<string, string> = {};
+  if (body !== undefined) headers["Content-Type"] = "application/json";
+  const token = tokenGetter ? await tokenGetter().catch(() => null) : null;
+  if (token) headers["Authorization"] = `Bearer ${token}`;
   const res = await fetch(`${BASE}${path}`, {
     method,
-    headers: body === undefined ? undefined : { "Content-Type": "application/json" },
+    headers,
     body: body === undefined ? undefined : JSON.stringify(body),
   });
 
-  // FastAPI reports request-validation failures as 422 with a {detail: [...]} body.
   if (!res.ok) {
     const errBody = await res.json().catch(() => null);
     throw new ApiError(res.status, errBody);
@@ -36,8 +43,15 @@ async function request<T>(method: string, path: string, body?: JsonBody): Promis
   return (await res.json()) as T;
 }
 
-// The response type is yours to declare: nothing infers across the Python boundary, so a
-// TS interface here mirrors the endpoint's Pydantic model by hand — keep the two in sync.
+export function errorMessage(err: unknown): string {
+  if (err instanceof ApiError) {
+    const detail = (err.body as { detail?: unknown } | null)?.detail;
+    if (Array.isArray(detail) && detail[0]?.msg) return String(detail[0].msg);
+    return err.message;
+  }
+  return err instanceof Error ? err.message : "Something went wrong";
+}
+
 export const apiGet = <T>(path: string) => request<T>("GET", path);
 export const apiPost = <T>(path: string, body?: JsonBody) => request<T>("POST", path, body ?? null);
 export const apiPut = <T>(path: string, body?: JsonBody) => request<T>("PUT", path, body ?? null);

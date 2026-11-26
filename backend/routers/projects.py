@@ -33,14 +33,14 @@ async def _start_generation(project: dict, text: str, add_user_message: bool = T
         await core.add_message(project["id"], "user", text, "user")
     await db.projects.update_one(
         {"id": project["id"]},
-        {"$set": {"generating": True, "gen_phase": "planning", "gen_error": "", "gen_started_at": core.now(), "updated_at": core.now()}},
+        {"$set": {"generating": True, "gen_can_publish": project.get("access", "owner") in ("owner", "publisher"), "gen_phase": "planning", "gen_error": "", "gen_started_at": core.now(), "updated_at": core.now()}},
     )
     _spawn(project["id"], text)
 
 
-async def _reload(project_id: str) -> Project:
+async def _reload(project_id: str, access: str = "owner") -> Project:
     doc = await db.projects.find_one({"id": project_id}, {"_id": 0})
-    return core.full(doc, PROGRESS.get(project_id, 0))
+    return core.full(doc, PROGRESS.get(project_id, 0), access)
 
 
 async def views_by_project(ids: list[str]) -> dict[str, int]:
@@ -59,7 +59,8 @@ async def list_projects(user: dict = Depends(require_user)):
     views = await views_by_project([d["id"] for d in docs])
     names = {u["user_id"]: u.get("display_name") or u.get("email", "") for u in
              await db.users.find({"user_id": {"$in": owners}}, {"_id": 0, "user_id": 1, "display_name": 1, "email": 1}).to_list(100)}
-    return [core.summary(d, views.get(d["id"], 0), uid, names.get(d["owner_id"], "")) for d in docs]
+    roles = await plans.team_roles(uid)
+    return [core.summary(d, views.get(d["id"], 0), uid, names.get(d["owner_id"], ""), "owner" if d["owner_id"] == uid else roles.get(d["owner_id"], "viewer")) for d in docs]
 
 
 @router.post("/projects", response_model=Project, status_code=201)
@@ -82,23 +83,23 @@ async def create_project(body: ProjectCreate, user: dict = Depends(require_user)
 
 @router.get("/projects/{project_id}", response_model=Project)
 async def get_project(project_id: str, user: dict = Depends(require_user)):
-    doc = await core.owned_project(project_id, user["user_id"])
+    doc = await core.owned_project(project_id, user["user_id"], need="view")
     started = core.aware(doc.get("gen_started_at"))
     if doc.get("generating") and project_id not in PROGRESS and started and core.now() - started > STALE_AFTER:
         await db.projects.update_one({"id": project_id}, {"$set": {"generating": False, "gen_phase": "", "gen_error": "Timed out"}})
-    return await _reload(project_id)
+    return await _reload(project_id, doc["access"])
 
 
 @router.patch("/projects/{project_id}", response_model=Project)
 async def update_project(project_id: str, body: ProjectUpdate, user: dict = Depends(require_user)):
-    await core.owned_project(project_id, user["user_id"])
+    doc = await core.owned_project(project_id, user["user_id"], need="edit")
     sets = {k: v.strip() for k, v in body.model_dump(exclude_none=True).items()}
     if "title" in sets:
         sets["title_auto"] = False
     if sets:
         sets["updated_at"] = core.now()
         await db.projects.update_one({"id": project_id}, {"$set": sets})
-    return await _reload(project_id)
+    return await _reload(project_id, doc["access"])
 
 
 @router.delete("/projects/{project_id}", status_code=204)
@@ -156,92 +157,92 @@ def _kind(d: dict) -> str:
 
 @router.get("/projects/{project_id}/messages", response_model=list[Message])
 async def list_messages(project_id: str, user: dict = Depends(require_user)):
-    await core.owned_project(project_id, user["user_id"])
+    doc = await core.owned_project(project_id, user["user_id"], need="view")
     docs = await db.messages.find({"project_id": project_id}, {"_id": 0}).sort("created_at", 1).to_list(2000)
     return [Message(**{**d, "kind": _kind(d), "meta": d.get("meta") or {}, "created_at": core.aware(d["created_at"])}) for d in docs]
 
 
 @router.post("/projects/{project_id}/messages", response_model=Project, status_code=202)
 async def send_message(project_id: str, body: ChatIn, user: dict = Depends(require_user)):
-    doc = await core.owned_project(project_id, user["user_id"])
+    doc = await core.owned_project(project_id, user["user_id"], need="edit")
     await _start_generation(doc, body.content.strip())
-    return await _reload(project_id)
+    return await _reload(project_id, doc["access"])
 
 
 @router.post("/projects/{project_id}/retry", response_model=Project, status_code=202)
 async def retry(project_id: str, user: dict = Depends(require_user)):
     """Run the most recent user request again without repeating it in the thread."""
-    doc = await core.owned_project(project_id, user["user_id"])
+    doc = await core.owned_project(project_id, user["user_id"], need="edit")
     last = await db.messages.find_one({"project_id": project_id, "role": "user"}, {"_id": 0}, sort=[("created_at", -1)])
     if not last:
         raise HTTPException(status_code=409, detail="There is no request to retry")
     await _start_generation(doc, last["content"], add_user_message=False)
-    return await _reload(project_id)
+    return await _reload(project_id, doc["access"])
 
 
 # ---------- versions ----------
 
 @router.get("/projects/{project_id}/versions", response_model=list[Version])
 async def list_versions(project_id: str, user: dict = Depends(require_user)):
-    await core.owned_project(project_id, user["user_id"])
+    doc = await core.owned_project(project_id, user["user_id"], need="view")
     docs = await db.versions.find({"project_id": project_id}, {"_id": 0, "html": 0}).sort("number", -1).to_list(500)
     return [Version(**{**d, "created_at": core.aware(d["created_at"])}) for d in docs]
 
 
-async def _move_to(project_id: str, number: int) -> Project:
+async def _move_to(project_id: str, number: int, access: str = "owner") -> Project:
     v = await db.versions.find_one({"project_id": project_id, "number": number}, {"_id": 0})
     if not v:
         raise HTTPException(status_code=404, detail="Version not found")
     await db.projects.update_one(
         {"id": project_id}, {"$set": {"html": v["html"], "version_pointer": number, "updated_at": core.now()}}
     )
-    return await _reload(project_id)
+    return await _reload(project_id, access)
 
 
 @router.post("/projects/{project_id}/undo", response_model=Project)
 async def undo(project_id: str, user: dict = Depends(require_user)):
-    doc = await core.owned_project(project_id, user["user_id"])
+    doc = await core.owned_project(project_id, user["user_id"], need="edit")
     if doc.get("version_pointer", 0) <= 1:
         raise HTTPException(status_code=409, detail="Nothing to undo")
-    return await _move_to(project_id, doc["version_pointer"] - 1)
+    return await _move_to(project_id, doc["version_pointer"] - 1, doc["access"])
 
 
 @router.post("/projects/{project_id}/redo", response_model=Project)
 async def redo(project_id: str, user: dict = Depends(require_user)):
-    doc = await core.owned_project(project_id, user["user_id"])
+    doc = await core.owned_project(project_id, user["user_id"], need="edit")
     if doc.get("version_pointer", 0) >= doc.get("version_count", 0):
         raise HTTPException(status_code=409, detail="Nothing to redo")
-    return await _move_to(project_id, doc["version_pointer"] + 1)
+    return await _move_to(project_id, doc["version_pointer"] + 1, doc["access"])
 
 
 @router.post("/projects/{project_id}/versions/{number}/restore", response_model=Project)
 async def restore_version(project_id: str, number: int, user: dict = Depends(require_user)):
-    doc = await core.owned_project(project_id, user["user_id"])
+    doc = await core.owned_project(project_id, user["user_id"], need="edit")
     new_number = await core.restore_version(doc, number)
     await core.add_message(project_id, "assistant", f"Restored version {number}. It is saved as version {new_number}.", "action",
                            meta={"action": "restore_version", "ok": True})
-    return await _reload(project_id)
+    return await _reload(project_id, doc["access"])
 
 
 # ---------- publishing ----------
 
 @router.post("/projects/{project_id}/publish", response_model=Project)
 async def publish(project_id: str, body: PublishIn, user: dict = Depends(require_user)):
-    doc = await core.owned_project(project_id, user["user_id"])
+    doc = await core.owned_project(project_id, user["user_id"], need="publish")
     await plans.check_live_quota(doc)
     await core.publish_project(doc, body.slug, body.in_gallery)
-    return await _reload(project_id)
+    return await _reload(project_id, doc["access"])
 
 
 @router.post("/projects/{project_id}/unpublish", response_model=Project)
 async def unpublish(project_id: str, user: dict = Depends(require_user)):
-    await core.owned_project(project_id, user["user_id"])
+    doc = await core.owned_project(project_id, user["user_id"], need="publish")
     await db.projects.update_one({"id": project_id}, {"$set": {"published": False, "updated_at": core.now()}})
-    return await _reload(project_id)
+    return await _reload(project_id, doc["access"])
 
 
 @router.post("/projects/{project_id}/gallery", response_model=Project)
 async def set_gallery(project_id: str, body: GalleryIn, user: dict = Depends(require_user)):
-    await core.owned_project(project_id, user["user_id"])
+    doc = await core.owned_project(project_id, user["user_id"], need="publish")
     await db.projects.update_one({"id": project_id}, {"$set": {"in_gallery": body.in_gallery}})
-    return await _reload(project_id)
+    return await _reload(project_id, doc["access"])

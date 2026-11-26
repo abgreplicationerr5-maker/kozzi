@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import { apiDelete, apiGet, apiPatch, apiPost, errorMessage } from "@/lib/api";
 import type { Device, Inbox, Me, ProjectSummary, Trash } from "@/lib/types";
 import InboxSection from "@/components/InboxSection";
+import UsageBanner from "@/components/UsageBanner";
 import { useCreateProject, useDuplicateProject } from "@/lib/hooks";
 import { PLAN_INTENT_KEY, takePending } from "@/lib/pending";
 import { cn } from "@/lib/utils";
@@ -56,7 +57,11 @@ function ProjectCard({ p, onDelete }: { p: ProjectSummary; onDelete: (p: Project
           </span>
           {p.generating && <span className="k-breathe text-[#0F766E]" data-testid={`project-working-${p.id}`}>Working</span>}
           {!p.generating && p.has_unpublished_changes && <span className="text-[#B45309]" data-testid={`project-unpublished-${p.id}`}>Changes not live</span>}
-          {!p.is_owner && <span className="truncate text-[#666664]" data-testid={`project-shared-${p.id}`}>Shared by {p.shared_by || "a teammate"}</span>}
+          {!p.is_owner && (
+            <span className="truncate text-[#666664]" data-testid={`project-shared-${p.id}`}>
+              Shared by {p.shared_by || "a teammate"} · {p.access === "viewer" ? "view only" : p.access === "publisher" ? "can publish" : "can edit"}
+            </span>
+          )}
         </div>
         <h3 className="mt-3 line-clamp-1 text-base font-medium tracking-tight" data-testid={`project-title-${p.id}`}>{p.title}</h3>
         <p className="mt-1 line-clamp-2 min-h-[40px] text-sm leading-relaxed text-[#666664]" data-testid={`project-description-${p.id}`}>
@@ -365,6 +370,7 @@ export default function Dashboard() {
     onSuccess: (_d, id) => {
       qc.invalidateQueries({ queryKey: ["projects"] });
       qc.invalidateQueries({ queryKey: ["trash"] });
+      qc.invalidateQueries({ queryKey: ["usage"] });
       setToDelete(null);
       toast.success("Moved to the Bin", {
         action: { label: "Undo", onClick: () => apiPost(`/trash/projects/${id}/restore`).then(() => {
@@ -428,6 +434,7 @@ export default function Dashboard() {
           <UserButton />
         </div>
         <div className="k-rise mx-auto w-full max-w-6xl px-5 py-8 sm:px-8 sm:py-10">
+          <UsageBanner />
           <h1 className="text-2xl font-medium tracking-tight sm:text-[28px]" data-testid="dashboard-heading">New app</h1>
           <p className="mt-1 text-sm text-[#666664]">Describe it in a sentence or two. You can keep changing it from the chat.</p>
           <div className="mt-5 max-w-3xl">

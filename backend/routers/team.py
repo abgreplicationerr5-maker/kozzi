@@ -10,7 +10,7 @@ from clerk_auth import require_user
 from lib import core, plans
 from lib.db import db
 from lib.email import owner_email
-from models.schemas import InviteIn, Membership, Team, TeamMember
+from models.schemas import InviteIn, MemberRoleIn, Membership, Team, TeamMember
 
 router = APIRouter()
 
@@ -36,13 +36,14 @@ async def get_team(user: dict = Depends(require_user)):
     members = []
     for r in rows:
         name = (await _name(r["member_user_id"]))[0] if r.get("member_user_id") else ""
-        members.append(TeamMember(id=r["id"], email=r["email"], status=r["status"], display_name=name,
+        members.append(TeamMember(id=r["id"], email=r["email"], status=r["status"], role=r.get("role") or "editor", display_name=name,
                                   created_at=core.aware(r["created_at"]), joined_at=core.aware(r.get("joined_at"))))
     active_owners = set(await plans.team_owner_ids(uid))
     memberships = []
     for m in await db.team_members.find({"member_user_id": uid, "status": "active"}, {"_id": 0}).to_list(100):
         n, e = await _name(m["owner_id"])
-        memberships.append(Membership(owner_id=m["owner_id"], owner_name=n, owner_email=e, active=m["owner_id"] in active_owners))
+        memberships.append(Membership(owner_id=m["owner_id"], owner_name=n, owner_email=e, active=m["owner_id"] in active_owners,
+                                      role=m.get("role") or "editor"))
     used = 1 + len(rows)
     return Team(seats=limits["seats"], used=used, can_invite=limits["seats"] > used, members=members, memberships=memberships)
 
@@ -60,12 +61,20 @@ async def invite(body: InviteIn, user: dict = Depends(require_user)):
         raise HTTPException(status_code=409, detail="That person is already on your team")
     if 1 + await db.team_members.count_documents({"owner_id": uid}) >= limits["seats"]:
         raise HTTPException(status_code=402, detail=f"Your plan has {limits['seats']} seats and they're all used")
-    doc = {"id": str(uuid.uuid4()), "owner_id": uid, "email": email, "status": "invited", "member_user_id": None,
+    doc = {"id": str(uuid.uuid4()), "owner_id": uid, "email": email, "status": "invited", "role": body.role, "member_user_id": None,
            "created_at": core.now(), "joined_at": None}
     existing = await db.users.find_one({"email": {"$regex": f"^{email.replace('.', '[.]').replace('+', '[+]')}$", "$options": "i"}}, {"_id": 0, "user_id": 1})
     if existing and existing["user_id"] != uid:  # already has a Kozzi account: joins right away
         doc.update(status="active", member_user_id=existing["user_id"], joined_at=core.now())
     await db.team_members.insert_one(doc)
+    return await get_team(user)
+
+
+@router.patch("/team/members/{member_id}", response_model=Team)
+async def set_member_role(member_id: str, body: MemberRoleIn, user: dict = Depends(require_user)):
+    res = await db.team_members.update_one({"id": member_id, "owner_id": user["user_id"]}, {"$set": {"role": body.role}})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Not found")
     return await get_team(user)
 
 

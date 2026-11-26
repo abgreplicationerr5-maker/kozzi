@@ -156,7 +156,12 @@ export default function Builder() {
             <ArrowLeft className="size-4" />
           </Link>
           <LogoMark className="mx-1 hidden size-5 sm:inline-flex" />
-          {p ? <TitleField project={p} /> : <div className="k-skeleton h-6 w-40 rounded-md" />}
+          {p ? (p.access === "viewer" ? <span className="truncate text-sm font-medium" data-testid="builder-title-readonly">{p.title}</span> : <TitleField project={p} />) : <div className="k-skeleton h-6 w-40 rounded-md" />}
+          {p && p.access !== "owner" && (
+            <span className="ml-2 hidden shrink-0 text-[11px] text-[#666664] md:inline" data-testid="builder-access-label">
+              {p.access === "viewer" ? "View only" : p.access === "editor" ? "Can edit" : "Can publish"}
+            </span>
+          )}
         </div>
         {p && (
           <div className="flex items-center gap-0.5 sm:gap-1">
@@ -169,6 +174,7 @@ export default function Builder() {
             >
               <Command className="size-3" /> K
             </button>
+            {p.access !== "viewer" && <>
             <Button variant="ghost" size="icon-sm" className="k-press" aria-label="Undo" data-testid="builder-undo-btn" disabled={!p.can_undo || step.isPending || p.generating} onClick={() => step.mutate("undo")}>
               <Undo2 className="size-4" />
             </Button>
@@ -176,12 +182,13 @@ export default function Builder() {
               <Redo2 className="size-4" />
             </Button>
             <VersionMenu project={p} />
+            </>}
             {p.published && (
               <a href={`/app/${p.slug}`} target="_blank" rel="noreferrer" data-testid="builder-visit-live-btn" className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "k-press hidden sm:inline-flex")}>
                 <ExternalLink className="size-3.5" /> Live
               </a>
             )}
-            <PublishPopover project={p} />
+            {(p.access === "owner" || p.access === "publisher") && <PublishPopover project={p} />}
           </div>
         )}
       </header>
@@ -203,7 +210,7 @@ export default function Builder() {
 
       <div className="flex min-h-0 flex-1">
         <aside className={cn("min-h-0 w-full shrink-0 border-r border-[#E5E5E3] lg:block lg:w-[380px] xl:w-[400px]", mobilePane === "chat" ? "block" : "hidden")}>
-          {p ? <ChatPanel project={p} /> : <div className="k-skeleton m-4 h-24 rounded-xl" />}
+          {p ? <ChatPanel project={p} readOnly={p.access === "viewer"} /> : <div className="k-skeleton m-4 h-24 rounded-xl" />}
         </aside>
 
         <section className={cn("min-h-0 min-w-0 flex-1 flex-col lg:flex", mobilePane === "canvas" ? "flex" : "hidden")}>
@@ -310,7 +317,11 @@ export default function Builder() {
                 </motion.div>
               </div>
             )}
-            {tab === "data" && <DataEditor projectId={projectId} />}
+            {tab === "data" && (
+              <fieldset disabled={p?.access === "viewer"} className="contents" data-testid="data-fieldset">
+                <DataEditor projectId={projectId} />
+              </fieldset>
+            )}
             {tab === "code" && <CodeViewer html={p?.html ?? ""} filename={`${p?.slug || "app"}.html`} />}
             {tab === "activity" && <StatsPanel projectId={projectId} published={!!p?.published} />}
           </div>

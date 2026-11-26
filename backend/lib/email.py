@@ -247,6 +247,9 @@ async def _deliver(project: dict, kind: str, to: str, subject: str, html: str, t
 async def _attempt(doc: dict) -> str:
     try:
         await _send(to=doc["to"], subject=doc["subject"], html=doc["html"])
+    except ValueError as e:  # blocked by the safety gate: never retried
+        await db.emails.update_one({"id": doc["id"]}, {"$set": {"status": "failed", "last_error": "Blocked by the email safety check"}, "$inc": {"attempts": 1}})
+        raise HTTPException(status_code=422, detail=f"Email blocked by the safety check: {e}")
     except EmailPaused as e:
         await db.emails.update_one({"id": doc["id"]}, {"$set": {"status": "queued", "last_error": str(e.detail)}, "$inc": {"attempts": 1}})
         return "queued"
@@ -329,3 +332,31 @@ async def send_record_receipt(project: dict, table: str, record_id: str) -> tupl
     )
     html = _wrap("Submission received", body, f"You are getting this because this address was entered in {project['title']}.")
     return to, await _deliver(project, "receipt", to, subject, html, intro + "\n\n" + "\n".join(lines), record_id)
+
+
+async def send_enquiry_alerts(enquiry: dict) -> int:
+    """Every admin gets the enquiry in their Kozzi Inbox, and by email when delivery works."""
+    from lib.roles import IN_ENV  # local import keeps email free of auth imports at load time
+    admins = await db.users.find({"role": "admin", **IN_ENV}, {"_id": 0, "user_id": 1, "email": 1}).to_list(50)
+    subject = f"Enterprise enquiry: {enquiry['company']} ({enquiry['team_size']} people)"[:140]
+    lines = [f"Name: {enquiry['name']}", f"Email: {enquiry['email']}", f"Company: {enquiry['company']}", f"Team size: {enquiry['team_size']}"]
+    text = "\n".join(lines) + (f"\n\n{enquiry['message']}" if enquiry.get("message") else "")
+    html = _wrap(subject, _paragraphs(text), "You get this because you are a Kozzi admin. Reply from the Kozzi Inbox or the Admin page.")
+    count = 0
+    for a in admins:
+        to = a.get("email") or await owner_email(a["user_id"])
+        if not to:
+            continue
+        doc = {
+            "id": str(uuid.uuid4()), "project_id": "", "owner_id": a["user_id"], "kind": "enquiry", "to": to,
+            "subject": subject, "html": html, "text": text, "record_id": None, "reply_to": enquiry["email"],
+            "status": "queued", "ok": False, "attempts": 0, "last_error": "", "read": False,
+            "day": today_iso(), "created_at": core.now(), "sent_at": None,
+        }
+        await db.emails.insert_one(doc)
+        try:
+            await _attempt(doc)
+        except HTTPException:
+            pass  # stays in the Inbox as failed; the admin still sees it
+        count += 1
+    return count

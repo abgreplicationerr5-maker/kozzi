@@ -1,6 +1,8 @@
 // Hand-written mirrors of backend/models/schemas.py. Keep in sync.
 
 export type Device = "desktop" | "tablet" | "phone";
+export type Access = "owner" | "publisher" | "editor" | "viewer";
+export type TeamRole = "viewer" | "editor" | "publisher";
 
 export interface Preferences {
   default_device: Device;
@@ -40,6 +42,7 @@ export interface ProjectSummary {
   domain_checked_at: string | null;
   is_owner: boolean;
   shared_by: string;
+  access: Access;
   created_at: string;
   updated_at: string;
   published_at: string | null;
@@ -134,7 +137,8 @@ export interface InboxEmail {
   id: string;
   project_id: string;
   project_title: string;
-  kind: "builder" | "notify" | "receipt";
+  kind: "builder" | "notify" | "receipt" | "enquiry";
+  reply_to: string;
   to: string;
   subject: string;
   text: string;
@@ -266,6 +270,7 @@ export interface TeamMember {
   id: string;
   email: string;
   status: "invited" | "active";
+  role: TeamRole;
   display_name: string;
   created_at: string;
   joined_at: string | null;
@@ -276,6 +281,7 @@ export interface Membership {
   owner_name: string;
   owner_email: string;
   active: boolean;
+  role: TeamRole;
 }
 
 export interface Team {
@@ -334,4 +340,24 @@ export interface AdminUser {
 export interface AdminUsers {
   roles: string[];
   users: AdminUser[];
+}
+
+export interface UsageInfo {
+  plan: string;
+  label: string;
+  limits: PlanLimits;
+  usage: { projects: number; live: number; seats: number };
+}
+
+export interface Coupon {
+  id: string;
+  code: string;
+  percent_off: number | null;
+  amount_off: number | null;
+  duration: string;
+  duration_in_months: number | null;
+  times_redeemed: number;
+  max_redemptions: number | null;
+  expires_at: string | null;
+  active: boolean;
 }

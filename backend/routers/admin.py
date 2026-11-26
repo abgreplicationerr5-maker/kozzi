@@ -5,10 +5,11 @@ import uuid
 from collections import defaultdict
 from datetime import timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 
 from lib import core, plans
 from lib.db import db
+from lib.email import send_enquiry_alerts
 from lib.roles import IN_ENV, RANK, ROLES, effective_role, require_role
 from models.schemas import (
     AdminPayment, AdminUser, AdminUsers, Enquiry, EnquiryIn, EnquiryUpdate, PlanGrantIn, RoleIn,
@@ -27,11 +28,12 @@ def _limit(ip: str) -> None:
 
 
 @router.post("/enquiries", status_code=201)
-async def create_enquiry(body: EnquiryIn, request: Request):
+async def create_enquiry(body: EnquiryIn, request: Request, background: BackgroundTasks):
     ip = (request.headers.get("x-forwarded-for") or (request.client.host if request.client else "")).split(",")[0].strip()
     _limit(ip)
-    await db.enquiries.insert_one({"id": str(uuid.uuid4()), **body.model_dump(), "email": body.email.strip().lower(),
-                                   "status": "new", "created_at": core.now()})
+    doc = {"id": str(uuid.uuid4()), **body.model_dump(), "email": body.email.strip().lower(), "status": "new", "created_at": core.now()}
+    await db.enquiries.insert_one(doc)
+    background.add_task(send_enquiry_alerts, doc)
     return {"ok": True}
 
 

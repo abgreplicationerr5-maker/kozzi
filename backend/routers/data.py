@@ -37,14 +37,14 @@ def _rate_limit(key: str) -> None:
 
 # ---------- owner ----------
 
-async def _pid(project_id: str, user: dict) -> str:
-    await core.owned_project(project_id, user["user_id"])
+async def _pid(project_id: str, user: dict, need: str = "edit") -> str:
+    await core.owned_project(project_id, user["user_id"], need=need)
     return project_id
 
 
 @router.get("/projects/{project_id}/tables", response_model=list[TableInfo])
 async def owner_tables(project_id: str, user: dict = Depends(require_user)):
-    return await core.list_tables(await _pid(project_id, user))
+    return await core.list_tables(await _pid(project_id, user, "view"))
 
 
 @router.post("/projects/{project_id}/tables", response_model=TableInfo, status_code=201)
@@ -76,12 +76,12 @@ async def owner_delete_table(project_id: str, table: str, user: dict = Depends(r
 
 @router.get("/projects/{project_id}/tables/{table}/records", response_model=list[RecordOut])
 async def owner_records(project_id: str, table: str, user: dict = Depends(require_user)):
-    return await core.list_records(await _pid(project_id, user), table)
+    return await core.list_records(await _pid(project_id, user, "view"), table)
 
 
 @router.get("/projects/{project_id}/tables/{table}/records/{record_id}", response_model=RecordOut)
 async def owner_record(project_id: str, table: str, record_id: str, user: dict = Depends(require_user)):
-    return await core.get_record(await _pid(project_id, user), table, record_id)
+    return await core.get_record(await _pid(project_id, user, "view"), table, record_id)
 
 
 @router.post("/projects/{project_id}/tables/{table}/records", response_model=RecordOut, status_code=201)
@@ -123,7 +123,7 @@ async def owner_receipt(project_id: str, body: EmailReceiptIn, user: dict = Depe
 
 @router.get("/projects/{project_id}/stats", response_model=Stats)
 async def owner_stats(project_id: str, user: dict = Depends(require_user)):
-    pid = await _pid(project_id, user)
+    pid = await _pid(project_id, user, "view")
     today = today_iso()
     days = [(core.now() - timedelta(days=i)).strftime("%Y-%m-%d") for i in range(13, -1, -1)]
     visits = {v["day"]: v["count"] for v in await db.app_visits.find({"project_id": pid, "day": {"$in": days}}, {"_id": 0}).to_list(30)}

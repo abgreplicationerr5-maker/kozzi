@@ -153,6 +153,9 @@ async def _execute(project_id: str, action: dict) -> str:
         await db.projects.update_one({"id": project_id}, {"$set": {"title": title, "title_auto": False, "updated_at": core.now()}})
         return f"Renamed the project to {title}"
 
+    if kind in ("publish", "unpublish") and doc.get("gen_can_publish") is False:
+        raise ValueError("your team role doesn't allow publishing. Ask the owner")
+
     if kind == "publish":
         slug = core.slugify(str(action.get("slug") or "")) if action.get("slug") else doc["slug"]
         await plans.check_live_quota(doc)

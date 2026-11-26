@@ -50,6 +50,7 @@ class ProjectSummary(BaseModel):
     domain_checked_at: Optional[datetime] = None
     is_owner: bool = True
     shared_by: str = ""
+    access: Literal["owner", "publisher", "editor", "viewer"] = "owner"
     created_at: datetime
     updated_at: datetime
     published_at: Optional[datetime] = None
@@ -203,7 +204,8 @@ class InboxEmail(BaseModel):
     id: str
     project_id: str
     project_title: str
-    kind: Literal["builder", "notify", "receipt"]
+    kind: Literal["builder", "notify", "receipt", "enquiry"]
+    reply_to: str = ""
     to: str
     subject: str
     text: str = ""
@@ -316,6 +318,40 @@ class Usage(BaseModel):
     seats: int = 1
 
 
+class UsageInfo(BaseModel):
+    plan: str
+    label: str
+    limits: "PlanLimits"
+    usage: Usage
+
+
+class Coupon(BaseModel):
+    id: str
+    code: str
+    percent_off: Optional[float] = None
+    amount_off: Optional[float] = None
+    duration: str
+    duration_in_months: Optional[int] = None
+    times_redeemed: int = 0
+    max_redemptions: Optional[int] = None
+    expires_at: Optional[datetime] = None
+    active: bool = True
+
+
+class CouponIn(BaseModel):
+    code: str = Field(min_length=3, max_length=30, pattern=r"^[A-Za-z0-9_-]+$")
+    percent_off: Optional[float] = Field(default=None, gt=0, le=100)
+    amount_off: Optional[float] = Field(default=None, gt=0, le=10000)
+    duration: Literal["once", "repeating", "forever"] = "once"
+    duration_in_months: Optional[int] = Field(default=None, ge=1, le=36)
+    max_redemptions: Optional[int] = Field(default=None, ge=1, le=100000)
+    expires_in_days: Optional[int] = Field(default=None, ge=1, le=730)
+
+
+class CouponUpdate(BaseModel):
+    active: bool
+
+
 class Billing(BaseModel):
     plan: str
     label: str
@@ -354,10 +390,14 @@ class PaymentStatus(BaseModel):
 
 # ---------- team ----------
 
+TeamRole = Literal["viewer", "editor", "publisher"]
+
+
 class TeamMember(BaseModel):
     id: str
     email: str
     status: Literal["invited", "active"]
+    role: TeamRole = "editor"
     display_name: str = ""
     created_at: datetime
     joined_at: Optional[datetime] = None
@@ -368,6 +408,7 @@ class Membership(BaseModel):
     owner_name: str
     owner_email: str = ""
     active: bool = True
+    role: str = "editor"
 
 
 class Team(BaseModel):
@@ -380,6 +421,11 @@ class Team(BaseModel):
 
 class InviteIn(BaseModel):
     email: str = Field(min_length=5, max_length=200, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+    role: TeamRole = "editor"
+
+
+class MemberRoleIn(BaseModel):
+    role: TeamRole
 
 
 # ---------- profiles ----------

@@ -85,7 +85,7 @@ async def check_domain(domain: str, host: str, slug: str) -> tuple[str, str]:
 
 
 async def _owned_live(project_id: str, user: dict) -> dict:
-    return await core.owned_project(project_id, user["user_id"])
+    return await core.owned_project(project_id, user["user_id"], need="publish")
 
 
 @router.put("/projects/{project_id}/domain", response_model=Project)
@@ -97,15 +97,15 @@ async def set_domain(project_id: str, body: DomainIn, user: dict = Depends(requi
         raise HTTPException(status_code=409, detail="That domain is already connected to another app")
     await db.projects.update_one({"id": project_id}, {"$set": {
         "custom_domain": domain, "domain_status": "pending", "domain_detail": "", "domain_checked_at": None}})
-    return await _reload(project_id)
+    return await _reload(project_id, doc["access"])
 
 
 @router.delete("/projects/{project_id}/domain", response_model=Project)
 async def remove_domain(project_id: str, user: dict = Depends(require_user)):
-    await _owned_live(project_id, user)
+    doc = await _owned_live(project_id, user)
     await db.projects.update_one({"id": project_id}, {"$set": {
         "custom_domain": "", "domain_status": "", "domain_detail": "", "domain_checked_at": None}})
-    return await _reload(project_id)
+    return await _reload(project_id, doc["access"])
 
 
 @router.post("/projects/{project_id}/domain/check", response_model=Project)
@@ -120,4 +120,4 @@ async def verify_domain(project_id: str, request: Request, user: dict = Depends(
         status, detail = await check_domain(domain, kozzi_host(request), doc["slug"])
     await db.projects.update_one({"id": project_id}, {"$set": {
         "domain_status": status, "domain_detail": detail, "domain_checked_at": core.now()}})
-    return await _reload(project_id)
+    return await _reload(project_id, doc["access"])

@@ -52,7 +52,7 @@ function ActionLine({ m }: { m: Message }) {
   );
 }
 
-export default function ChatPanel({ project }: { project: Project }) {
+export default function ChatPanel({ project, readOnly = false }: { project: Project; readOnly?: boolean }) {
   const qc = useQueryClient();
   const [text, setText] = useState("");
   const endRef = useRef<HTMLDivElement>(null);
@@ -165,7 +165,12 @@ export default function ChatPanel({ project }: { project: Project }) {
             </button>
           </div>
         )}
-        {!project.generating && project.html && (
+        {readOnly && (
+          <p className="rounded-lg border border-[#E5E5E3] bg-[#FBFBFA] px-3 py-2.5 text-xs text-[#666664]" data-testid="chat-readonly-note">
+            You have view-only access to this project. Ask the owner for edit access to make changes.
+          </p>
+        )}
+        {!readOnly && !project.generating && project.html && (
           <div className="k-scroll mb-2 flex gap-1.5 overflow-x-auto pb-1">
             {SUGGESTIONS.map((s, i) => (
               <button
@@ -180,7 +185,7 @@ export default function ChatPanel({ project }: { project: Project }) {
             ))}
           </div>
         )}
-        <PromptBox
+        {!readOnly && <PromptBox
           value={text}
           onChange={setText}
           onSubmit={(t) => send.mutate(t)}
@@ -188,7 +193,7 @@ export default function ChatPanel({ project }: { project: Project }) {
           size="md"
           testId="chat"
           placeholder={project.html ? "Ask for a change, data, publishing or an email" : "Describe the app to build"}
-        />
+        />}
       </div>
     </div>
   );

@@ -80,15 +80,27 @@ async def shows_badge(owner_id: str) -> bool:
     return (await plan_for(owner_id))[1]["badge"]
 
 
+TEAM_ROLES = ["viewer", "editor", "publisher"]
+LEVEL = {"viewer": 1, "editor": 2, "publisher": 3, "owner": 4}
+NEED = {"view": 1, "edit": 2, "publish": 3, "owner": 4}
+
+
 async def team_owner_ids(user_id: str) -> list[str]:
     """Owners whose team this user is an active member of (and whose plan still has seats)."""
-    rows = await db.team_members.find({"member_user_id": user_id, "status": "active"}, {"_id": 0, "owner_id": 1}).to_list(100)
-    out = []
+    return list((await team_roles(user_id)).keys())
+
+
+async def team_roles(user_id: str) -> dict[str, str]:
+    """owner_id -> this user's team role, for teams whose plan still has seats."""
+    rows = await db.team_members.find({"member_user_id": user_id, "status": "active"}, {"_id": 0, "owner_id": 1, "role": 1}).to_list(100)
+    out = {}
     for r in rows:
         if (await plan_for(r["owner_id"]))[1]["seats"] > 1:
-            out.append(r["owner_id"])
+            out[r["owner_id"]] = r.get("role") or "editor"
     return out
 
 
-async def can_edit(doc: dict, user_id: str) -> bool:
-    return doc["owner_id"] == user_id or doc["owner_id"] in await team_owner_ids(user_id)
+async def access_level(doc: dict, user_id: str) -> str | None:
+    if doc["owner_id"] == user_id:
+        return "owner"
+    return (await team_roles(user_id)).get(doc["owner_id"])

@@ -7,7 +7,7 @@ import json
 import logging
 import os
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import stripe
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -15,10 +15,12 @@ from starlette.concurrency import run_in_threadpool
 
 from clerk_auth import require_user
 from lib import core, plans
+from lib.roles import require_role
 from lib.db import db
 from lib.email import owner_email
 from models.schemas import (
-    Billing, ChangePlanIn, CheckoutIn, CheckoutOut, Invoice, PaymentStatus, PlanInfo, PlanLimits, PriceOption, Usage,
+    Billing, ChangePlanIn, CheckoutIn, CheckoutOut, Coupon, CouponIn, CouponUpdate, Invoice, PaymentStatus, PlanInfo,
+    PlanLimits, PriceOption, Usage, UsageInfo,
 )
 
 logger = logging.getLogger(__name__)
@@ -96,6 +98,21 @@ def _limits(name: str) -> PlanLimits:
     return PlanLimits(**{k: v for k, v in plans.PLANS[name].items() if k != "label"})
 
 
+async def _usage(uid: str) -> Usage:
+    return Usage(
+        projects=await db.projects.count_documents({"owner_id": uid, **core.LIVE}),
+        live=await db.projects.count_documents({"owner_id": uid, "published": True, **core.LIVE}),
+        seats=1 + await db.team_members.count_documents({"owner_id": uid}),
+    )
+
+
+@router.get("/billing/usage", response_model=UsageInfo)
+async def get_usage(user: dict = Depends(require_user)):
+    """Cheap plan + usage read for the dashboard's usage banner (no Stripe calls)."""
+    name, limits = await plans.plan_for(user["user_id"])
+    return UsageInfo(plan=name, label=limits["label"], limits=_limits(name), usage=await _usage(user["user_id"]))
+
+
 @router.get("/billing", response_model=Billing)
 async def get_billing(user: dict = Depends(require_user)):
     uid = user["user_id"]
@@ -150,6 +167,7 @@ async def checkout(body: CheckoutIn, user: dict = Depends(require_user)):
         client_reference_id=uid,
         metadata={"user_id": uid, "lookup_key": body.lookup_key},
         subscription_data={"metadata": {"user_id": uid, "lookup_key": body.lookup_key}},
+        allow_promotion_codes=True,  # customers type admin-made codes on the Stripe page
     )
 
     def create():
@@ -266,3 +284,78 @@ async def stripe_webhook(request: Request):
         await db.payment_transactions.update_one({"stripe_payment_intent_id": obj.get("payment_intent")},
                                                  {"$set": {"status": "refunded", "payment_status": "refunded", "updated_at": core.now()}})
     return {"status": "ok"}
+
+
+# ---------- coupons (admin) ----------
+
+def _coupon_out(promo) -> Coupon:
+    d = json.loads(str(promo))
+    c = d.get("coupon") or ((d.get("promotion") or {}).get("coupon")) or {}
+    if isinstance(c, str):
+        c = json.loads(str(stripe.Coupon.retrieve(c)))
+    return Coupon(
+        id=d["id"], code=d["code"], percent_off=c.get("percent_off"),
+        amount_off=(c["amount_off"] / 100) if c.get("amount_off") else None, duration=c.get("duration", "once"),
+        duration_in_months=c.get("duration_in_months"), times_redeemed=d.get("times_redeemed", 0),
+        max_redemptions=d.get("max_redemptions"), expires_at=_ts(d.get("expires_at")), active=bool(d.get("active")),
+    )
+
+
+@router.get("/admin/coupons", response_model=list[Coupon])
+async def list_coupons(_: dict = Depends(require_role("admin"))):
+    def run():
+        promos = stripe.PromotionCode.list(limit=100, expand=["data.coupon"]).data
+        return [_coupon_out(p) for p in promos]
+    try:
+        return await run_in_threadpool(run)
+    except stripe.error.StripeError as exc:
+        logger.error("coupon list failed: %s", exc)
+        raise HTTPException(status_code=503, detail="Couldn't load codes from Stripe")
+
+
+@router.post("/admin/coupons", response_model=Coupon, status_code=201)
+async def create_coupon(body: CouponIn, _: dict = Depends(require_role("admin"))):
+    if (body.percent_off is None) == (body.amount_off is None):
+        raise HTTPException(status_code=422, detail="Pick either a percentage or a fixed amount off")
+    if body.duration == "repeating" and not body.duration_in_months:
+        raise HTTPException(status_code=422, detail="Say how many months the discount repeats")
+    code = body.code.upper()
+
+    def run():
+        if stripe.PromotionCode.list(code=code, limit=1).data:
+            raise HTTPException(status_code=409, detail="That code already exists")
+        ckw: dict = {"duration": body.duration, "name": code[:40]}
+        if body.percent_off is not None:
+            ckw["percent_off"] = body.percent_off
+        else:
+            ckw.update(amount_off=int(round(body.amount_off * 100)), currency="usd")
+        if body.duration == "repeating":
+            ckw["duration_in_months"] = body.duration_in_months
+        coupon = stripe.Coupon.create(**ckw)
+        pkw: dict = {"code": code}
+        if body.max_redemptions:
+            pkw["max_redemptions"] = body.max_redemptions
+        if body.expires_in_days:
+            pkw["expires_at"] = int((core.now() + timedelta(days=body.expires_in_days)).timestamp())
+        try:
+            promo = stripe.PromotionCode.create(coupon=coupon.id, **pkw)
+        except stripe.error.InvalidRequestError:
+            promo = stripe.PromotionCode.create(promotion={"type": "coupon", "coupon": coupon.id}, **pkw)
+        return _coupon_out(stripe.PromotionCode.retrieve(promo.id, expand=["coupon"]))
+    try:
+        return await run_in_threadpool(run)
+    except stripe.error.StripeError as exc:
+        logger.error("coupon create failed: %s", exc)
+        raise HTTPException(status_code=503, detail=f"Stripe refused the code: {getattr(exc, 'user_message', '') or 'try again'}")
+
+
+@router.patch("/admin/coupons/{promo_id}", response_model=Coupon)
+async def update_coupon(promo_id: str, body: CouponUpdate, _: dict = Depends(require_role("admin"))):
+    def run():
+        stripe.PromotionCode.modify(promo_id, active=body.active)
+        return _coupon_out(stripe.PromotionCode.retrieve(promo_id, expand=["coupon"]))
+    try:
+        return await run_in_threadpool(run)
+    except stripe.error.StripeError as exc:
+        logger.error("coupon update failed: %s", exc)
+        raise HTTPException(status_code=503, detail="Couldn't update the code in Stripe")

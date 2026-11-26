@@ -55,14 +55,16 @@ async def unique_slug(base: str) -> str:
     return slug
 
 
-def summary(doc: dict, views: int = 0, user_id: str | None = None, shared_by: str = "") -> ProjectSummary:
-    return ProjectSummary(**_common(doc), views=views, is_owner=user_id is None or doc["owner_id"] == user_id, shared_by=shared_by)
+def summary(doc: dict, views: int = 0, user_id: str | None = None, shared_by: str = "", access: str = "") -> ProjectSummary:
+    return ProjectSummary(**_common(doc), views=views, is_owner=user_id is None or doc["owner_id"] == user_id, shared_by=shared_by,
+                          access=access or ("owner" if user_id is None or doc["owner_id"] == user_id else "editor"))
 
 
-def full(doc: dict, gen_chars: int = 0) -> Project:
+def full(doc: dict, gen_chars: int = 0, access: str = "owner") -> Project:
     pointer = int(doc.get("version_pointer", 0))
     return Project(
         **_common(doc),
+        access=access,
         html=doc.get("html", ""),
         gen_error=doc.get("gen_error", ""),
         gen_chars=gen_chars,
@@ -95,13 +97,19 @@ def _common(doc: dict) -> dict:
     }
 
 
-async def owned_project(project_id: str, user_id: str, owner_only: bool = False) -> dict:
-    """The project if this user owns it, or (unless owner_only) is on the owner's team."""
-    from lib.plans import can_edit  # local import: plans imports core
+async def owned_project(project_id: str, user_id: str, owner_only: bool = False, need: str = "edit") -> dict:
+    """The project if this user owns it, or is on the owner's team with a role that allows `need`
+    (view | edit | publish). Deny by default: callers that only read pass need="view"."""
+    from lib.plans import LEVEL, NEED, access_level  # local import: plans imports core
 
     doc = await db.projects.find_one({"id": project_id, **LIVE}, {"_id": 0})
-    if not doc or (doc["owner_id"] != user_id and (owner_only or not await can_edit(doc, user_id))):
+    level = await access_level(doc, user_id) if doc else None
+    if not level or (owner_only and level != "owner"):
         raise HTTPException(status_code=404, detail="Project not found")
+    if LEVEL[level] < NEED["owner" if owner_only else need]:
+        what = {"edit": "make changes", "publish": "publish or change links"}.get(need, "do that")
+        raise HTTPException(status_code=403, detail=f"Your team role doesn't allow you to {what}. Ask the owner.")
+    doc["access"] = level
     return doc
 
 

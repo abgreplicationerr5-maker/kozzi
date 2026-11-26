@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { notifyError } from "@/lib/notify";
 
-const KIND = { builder: "From the chat", notify: "App alert", receipt: "Confirmation to a visitor" } as const;
+const KIND = { builder: "From the chat", notify: "App alert", receipt: "Confirmation to a visitor", enquiry: "Enterprise enquiry" } as const;
 const STATUS = {
   sent: { label: "Delivered", icon: Mail, tone: "text-[#0F766E]" },
   queued: { label: "Waiting to send", icon: Clock, tone: "text-[#B45309]" },
@@ -44,12 +44,19 @@ function Detail({ e, onBack }: { e: InboxEmail; onBack: () => void }) {
         </button>
         <h3 className="text-base font-medium tracking-tight" data-testid="inbox-detail-subject">{e.subject}</h3>
         <p className="mt-1 text-xs text-[#666664]">
-          To <span className="font-mono" data-testid="inbox-detail-to">{e.to}</span> · {KIND[e.kind]} · {e.project_title} · {formatDistanceToNow(new Date(e.created_at), { addSuffix: true })}
+          To <span className="font-mono" data-testid="inbox-detail-to">{e.to}</span> · {KIND[e.kind]}{e.kind !== "enquiry" && ` · ${e.project_title}`} · {formatDistanceToNow(new Date(e.created_at), { addSuffix: true })}
         </p>
         <p className={cn("mt-2 inline-flex items-center gap-1.5 text-xs font-medium", s.tone)} data-testid="inbox-detail-status">
           <s.icon className="size-3.5" /> {s.label}
         </p>
-        {pending && (
+        {e.kind === "enquiry" && e.reply_to && (
+          <div className="mt-4">
+            <a href={`mailto:${encodeURIComponent(e.reply_to)}?subject=${encodeURIComponent("Re: your Kozzi Enterprise enquiry")}`} className={cn(buttonVariants({ size: "sm" }), "k-press")} data-testid="inbox-reply-enquiry-btn">
+              <Send className="size-3.5" /> Reply to {e.reply_to}
+            </a>
+          </div>
+        )}
+        {pending && e.kind !== "enquiry" && (
           <div className="mt-4 flex flex-wrap gap-2">
             <a href={mailto(e)} className={cn(buttonVariants({ size: "sm" }), "k-press")} data-testid="inbox-send-myself-btn">
               <Send className="size-3.5" /> Send from my email app

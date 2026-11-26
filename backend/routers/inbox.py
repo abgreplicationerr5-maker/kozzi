@@ -26,7 +26,7 @@ async def get_inbox(user: dict = Depends(require_user)):
     queued = [d for d in docs if d.get("status") == "queued"]
     return Inbox(
         emails=[
-            InboxEmail(**{**d, "project_title": titles.get(d["project_id"], "Deleted project"),
+            InboxEmail(**{**d, "project_title": "Enterprise enquiry" if d.get("kind") == "enquiry" else titles.get(d["project_id"], "Deleted project"),
                           "created_at": core.aware(d["created_at"]), "sent_at": core.aware(d.get("sent_at"))})
             for d in docs
         ],

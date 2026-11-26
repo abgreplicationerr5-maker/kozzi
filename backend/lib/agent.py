@@ -13,7 +13,7 @@ from typing import Any
 
 from fastapi import HTTPException
 
-from lib import core, email
+from lib import core, email, plans
 from lib.db import db
 from lib.generator import build_code, llm_chat, stream_text
 
@@ -155,6 +155,7 @@ async def _execute(project_id: str, action: dict) -> str:
 
     if kind == "publish":
         slug = core.slugify(str(action.get("slug") or "")) if action.get("slug") else doc["slug"]
+        await plans.check_live_quota(doc)
         slug = await core.publish_project(doc, slug)
         return f"Published the latest version at /app/{slug}"
 

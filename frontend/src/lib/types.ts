@@ -12,6 +12,11 @@ export interface Me {
   display_name: string;
   workspace_name: string;
   email: string;
+  username: string;
+  bio: string;
+  avatar_url: string;
+  role: "admin" | "member";
+  plan: string;
   preferences: Preferences;
   created_at: string;
 }
@@ -33,6 +38,8 @@ export interface ProjectSummary {
   domain_status: "" | "pending" | "connected" | "failed";
   domain_detail: string;
   domain_checked_at: string | null;
+  is_owner: boolean;
+  shared_by: string;
   created_at: string;
   updated_at: string;
   published_at: string | null;
@@ -90,6 +97,7 @@ export interface PublicApp {
   title: string;
   slug: string;
   html: string;
+  show_badge: boolean;
 }
 
 export interface GalleryApp {
@@ -99,6 +107,8 @@ export interface GalleryApp {
   description: string;
   record_count: number;
   views: number;
+  owner_username: string;
+  owner_name: string;
   updated_at: string;
 }
 
@@ -190,4 +200,138 @@ export interface Trash {
   projects: TrashProject[];
   tables: TrashTable[];
   records: TrashRecord[];
+}
+
+export interface PlanLimits {
+  projects: number | null;
+  live: number | null;
+  domains: boolean;
+  badge: boolean;
+  emails_per_day: number;
+  seats: number;
+}
+
+export interface PlanInfo {
+  id: string;
+  label: string;
+  limits: PlanLimits;
+}
+
+export interface PriceOption {
+  lookup_key: string;
+  plan: string;
+  interval: "month" | "year";
+  amount: number;
+}
+
+export interface Invoice {
+  id: string;
+  number: string;
+  amount: number;
+  currency: string;
+  status: string;
+  created_at: string;
+  hosted_url: string;
+  pdf_url: string;
+}
+
+export interface Billing {
+  plan: string;
+  label: string;
+  interval: string;
+  status: string;
+  source: string;
+  period_end: string | null;
+  cancel_at_period_end: boolean;
+  has_subscription: boolean;
+  limits: PlanLimits;
+  usage: { projects: number; live: number; seats: number };
+  invoices: Invoice[];
+  prices: PriceOption[];
+  plans: PlanInfo[];
+}
+
+export interface CheckoutOut {
+  checkout_url: string;
+  session_id: string;
+}
+
+export interface PaymentStatus {
+  session_id: string;
+  status: string;
+  payment_status: string;
+}
+
+export interface TeamMember {
+  id: string;
+  email: string;
+  status: "invited" | "active";
+  display_name: string;
+  created_at: string;
+  joined_at: string | null;
+}
+
+export interface Membership {
+  owner_id: string;
+  owner_name: string;
+  owner_email: string;
+  active: boolean;
+}
+
+export interface Team {
+  seats: number;
+  used: number;
+  can_invite: boolean;
+  members: TeamMember[];
+  memberships: Membership[];
+}
+
+export interface Profile {
+  username: string;
+  display_name: string;
+  bio: string;
+  avatar_url: string;
+  joined_at: string;
+  apps: GalleryApp[];
+}
+
+export type EnquiryStatus = "new" | "contacted" | "won" | "closed";
+
+export interface Enquiry {
+  id: string;
+  name: string;
+  email: string;
+  company: string;
+  team_size: string;
+  message: string;
+  status: EnquiryStatus;
+  created_at: string;
+}
+
+export interface AdminPayment {
+  session_id: string;
+  user_id: string;
+  email: string;
+  lookup_key: string;
+  amount: number;
+  currency: string;
+  status: string;
+  payment_status: string;
+  created_at: string;
+}
+
+export interface AdminUser {
+  user_id: string;
+  email: string;
+  display_name: string;
+  username: string;
+  role: string;
+  plan: string;
+  plan_source: string;
+  projects: number;
+}
+
+export interface AdminUsers {
+  roles: string[];
+  users: AdminUser[];
 }

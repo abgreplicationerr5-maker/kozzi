@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { apiPost, errorMessage } from "@/lib/api";
 import type { Project } from "@/lib/types";
+import { notifyError } from "@/lib/notify";
 
 export function useCreateProject() {
   const qc = useQueryClient();
@@ -14,7 +15,7 @@ export function useCreateProject() {
       qc.invalidateQueries({ queryKey: ["projects"] });
       navigate(`/builder/${p.id}`);
     },
-    onError: (e) => toast.error(errorMessage(e)),
+    onError: (e) => notifyError(e),
   });
 }
 
@@ -28,7 +29,7 @@ export function useDuplicateProject(openAfter = false) {
       toast.success(`“${p.title}” added to your workspace`);
       if (openAfter) navigate(`/builder/${p.id}`);
     },
-    onError: (e) => toast.error(errorMessage(e)),
+    onError: (e) => notifyError(e),
   });
 }
 

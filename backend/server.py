@@ -13,18 +13,20 @@ load_dotenv(ROOT_DIR / '.env')
 
 # MongoDB connection
 from lib.db import client, db, ensure_indexes
+from lib.roles import move_retired_roles
 
 try:  # launched as `backend.server` (the default)
     from backend.clerk_auth import clerk_router, require_user  # noqa: F401
 except ModuleNotFoundError:  # launched from inside backend/ as `server`
     from clerk_auth import clerk_router, require_user  # noqa: F401
 
-from routers import data, domains, inbox, me, projects, trash
+from routers import admin, billing, data, domains, inbox, me, projects, team, trash
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     app.state.index_task = asyncio.create_task(ensure_indexes())  # background: a big index build must not block boot
+    await move_retired_roles()
     # generation tasks do not survive a restart — clear their flags so users can retry
     await db.projects.update_many({"generating": True}, {"$set": {"generating": False, "gen_phase": "", "gen_error": "Interrupted"}})
     yield
@@ -50,6 +52,9 @@ api_router.include_router(data.router)
 api_router.include_router(trash.router)
 api_router.include_router(domains.router)
 api_router.include_router(inbox.router)
+api_router.include_router(billing.router)
+api_router.include_router(team.router)
+api_router.include_router(admin.router)
 
 app.include_router(clerk_router)  # /api/clerk/config and /api/__clerk/*
 # Include the router in the main app

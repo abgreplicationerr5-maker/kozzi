@@ -1,18 +1,18 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { UserButton, useUser } from "@clerk/react";
 import { AnimatePresence, motion } from "motion/react";
 import { formatDistanceToNow } from "date-fns";
 import {
-  Command, Copy, ExternalLink, FolderKanban, Inbox as InboxIcon, Menu, PanelLeftClose, PanelLeftOpen, PenLine, RotateCcw, Search, Settings, Trash2,
+  Command, Copy, CreditCard, ExternalLink, FolderKanban, ShieldCheck, UserRound, Users, Inbox as InboxIcon, Menu, PanelLeftClose, PanelLeftOpen, PenLine, RotateCcw, Search, Settings, Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { apiDelete, apiGet, apiPatch, apiPost, errorMessage } from "@/lib/api";
 import type { Device, Inbox, Me, ProjectSummary, Trash } from "@/lib/types";
 import InboxSection from "@/components/InboxSection";
 import { useCreateProject, useDuplicateProject } from "@/lib/hooks";
-import { takePending } from "@/lib/pending";
+import { PLAN_INTENT_KEY, takePending } from "@/lib/pending";
 import { cn } from "@/lib/utils";
 import Logo from "@/components/Logo";
 import PromptBox from "@/components/PromptBox";
@@ -23,6 +23,7 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { notifyError } from "@/lib/notify";
 
 const STARTERS = [
   { label: "Client tracker", prompt: "A client tracker: clients with name, company, email, status (lead/active/paused/done) and deal value; searchable table, status filters and pipeline totals." },
@@ -55,6 +56,7 @@ function ProjectCard({ p, onDelete }: { p: ProjectSummary; onDelete: (p: Project
           </span>
           {p.generating && <span className="k-breathe text-[#0F766E]" data-testid={`project-working-${p.id}`}>Working</span>}
           {!p.generating && p.has_unpublished_changes && <span className="text-[#B45309]" data-testid={`project-unpublished-${p.id}`}>Changes not live</span>}
+          {!p.is_owner && <span className="truncate text-[#666664]" data-testid={`project-shared-${p.id}`}>Shared by {p.shared_by || "a teammate"}</span>}
         </div>
         <h3 className="mt-3 line-clamp-1 text-base font-medium tracking-tight" data-testid={`project-title-${p.id}`}>{p.title}</h3>
         <p className="mt-1 line-clamp-2 min-h-[40px] text-sm leading-relaxed text-[#666664]" data-testid={`project-description-${p.id}`}>
@@ -83,18 +85,26 @@ function ProjectCard({ p, onDelete }: { p: ProjectSummary; onDelete: (p: Project
           <Button variant="ghost" size="icon-sm" className="k-press" aria-label="Duplicate" data-testid={`project-duplicate-btn-${p.id}`} disabled={dup.isPending} onClick={() => dup.mutate(p.id)}>
             <Copy className="size-3.5" />
           </Button>
-          <Button variant="ghost" size="icon-sm" className="k-press text-[#DC2626] hover:text-[#DC2626]" aria-label="Delete" data-testid={`project-delete-btn-${p.id}`} onClick={() => onDelete(p)}>
-            <Trash2 className="size-3.5" />
-          </Button>
+          {p.is_owner && (
+            <Button variant="ghost" size="icon-sm" className="k-press text-[#DC2626] hover:text-[#DC2626]" aria-label="Delete" data-testid={`project-delete-btn-${p.id}`} onClick={() => onDelete(p)}>
+              <Trash2 className="size-3.5" />
+            </Button>
+          )}
         </div>
       </div>
     </motion.div>
   );
 }
 
-function SidebarNav({ collapsed, onSettings, section, setSection, binCount, unread }: {
-  collapsed: boolean; onSettings: () => void; section: Section; setSection: (s: Section) => void; binCount: number; unread: number;
+function SidebarNav({ collapsed, onSettings, section, setSection, binCount, unread, me }: {
+  collapsed: boolean; onSettings: () => void; section: Section; setSection: (s: Section) => void; binCount: number; unread: number; me?: Me;
 }) {
+  const links = [
+    { to: "/billing", label: "Plan and billing", icon: CreditCard, id: "billing" },
+    { to: "/team", label: "Team", icon: Users, id: "team" },
+    ...(me?.username ? [{ to: `/u/${me.username}`, label: "Public profile", icon: UserRound, id: "profile" }] : []),
+    ...(me?.role === "admin" ? [{ to: "/admin", label: "Admin", icon: ShieldCheck, id: "admin" }] : []),
+  ];
   const items = [
     { id: "projects" as const, label: "Projects", icon: FolderKanban, count: 0 },
     { id: "inbox" as const, label: "Inbox", icon: InboxIcon, count: unread },
@@ -120,6 +130,12 @@ function SidebarNav({ collapsed, onSettings, section, setSection, binCount, unre
           {collapsed && id === "inbox" && count > 0 && <span className="absolute ml-5 -mt-4 size-1.5 rounded-full bg-[#0F766E]" />}
         </button>
       ))}
+      {links.map(({ to, label, icon: Icon, id }) => (
+        <Link key={id} to={to} data-testid={`sidebar-${id}-link`} title={label} className={cn(row, "text-[#666664] hover:bg-white/60 hover:text-[#111111]")}>
+          <Icon className="size-4 shrink-0" strokeWidth={1.7} />
+          {!collapsed && <span className="flex-1">{label}</span>}
+        </Link>
+      ))}
       <button type="button" data-testid="sidebar-settings-btn" onClick={onSettings} title="Settings" className={cn(row, "text-[#666664] hover:bg-white/60 hover:text-[#111111]")}>
         <Settings className="size-4 shrink-0" strokeWidth={1.7} />
         {!collapsed && <span>Settings</span>}
@@ -138,8 +154,12 @@ function SettingsDialog({ open, onOpenChange, me }: { open: boolean; onOpenChang
   const [name, setName] = useState("");
   const [workspace, setWorkspace] = useState("");
   const [device, setDevice] = useState<Device>("desktop");
+  const [username, setUsername] = useState("");
+  const [bio, setBio] = useState("");
   useEffect(() => {
     if (open && me) {
+      setUsername(me.username);
+      setBio(me.bio);
       setName(me.display_name);
       setWorkspace(me.workspace_name);
       setDevice(me.preferences.default_device);
@@ -150,6 +170,8 @@ function SettingsDialog({ open, onOpenChange, me }: { open: boolean; onOpenChang
       apiPatch<Me>("/me", {
         display_name: name.trim(),
         workspace_name: workspace.trim(),
+        bio: bio.trim(),
+        ...(username.trim() && username.trim() !== me?.username ? { username: username.trim().toLowerCase() } : {}),
         preferences: { ...(me?.preferences ?? { sidebar_collapsed: false }), default_device: device },
       }),
     onSuccess: (m) => {
@@ -157,7 +179,7 @@ function SettingsDialog({ open, onOpenChange, me }: { open: boolean; onOpenChang
       toast.success("Settings saved");
       onOpenChange(false);
     },
-    onError: (e) => toast.error(errorMessage(e)),
+    onError: (e) => notifyError(e),
   });
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -176,6 +198,17 @@ function SettingsDialog({ open, onOpenChange, me }: { open: boolean; onOpenChang
           <div className="space-y-1.5">
             <Label htmlFor="display-name">Display name</Label>
             <Input id="display-name" data-testid="settings-display-name-input" value={name} onChange={(e) => setName(e.target.value)} maxLength={80} />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="username">Username</Label>
+            <div className="flex items-center rounded-md border border-input pl-3 text-sm">
+              <span className="text-[#9A9A97]">/u/</span>
+              <input id="username" className="h-9 flex-1 bg-transparent pr-3 outline-none" value={username} onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ""))} maxLength={30} data-testid="settings-username-input" />
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="bio">Bio <span className="font-normal text-[#9A9A97]">(shown on your public profile)</span></Label>
+            <textarea id="bio" rows={2} className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm outline-none" value={bio} onChange={(e) => setBio(e.target.value)} maxLength={280} data-testid="settings-bio-input" />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="workspace-name">Team or company name <span className="font-normal text-[#9A9A97]">(optional)</span></Label>
@@ -234,7 +267,7 @@ function BinSection() {
       qc.invalidateQueries({ queryKey: ["records"] });
       toast.success("Restored");
     },
-    onError: (e) => toast.error(errorMessage(e)),
+    onError: (e) => notifyError(e),
   });
   const ago = (d: string) => `Deleted ${formatDistanceToNow(new Date(d), { addSuffix: true })}`;
   const t = trash.data;
@@ -279,6 +312,7 @@ export default function Dashboard() {
   const [toDelete, setToDelete] = useState<ProjectSummary | null>(null);
   const create = useCreateProject();
   const dupPending = useDuplicateProject(true);
+  const navigate = useNavigate();
 
   const rawSection = params.get("section");
   const section: Section = rawSection === "bin" || rawSection === "inbox" ? rawSection : "projects";
@@ -305,6 +339,10 @@ export default function Dashboard() {
 
   // Finish whatever the visitor started before signing up.
   useEffect(() => {
+    if (localStorage.getItem(PLAN_INTENT_KEY)) {
+      navigate("/billing");
+      return;
+    }
     const intent = takePending();
     if (!intent) return;
     if (intent.type === "prompt") create.mutate(intent.prompt);
@@ -319,7 +357,7 @@ export default function Dashboard() {
       if (me.data) qc.setQueryData<Me>(["me"], { ...me.data, preferences: { ...me.data.preferences, sidebar_collapsed: value } });
     },
     onSuccess: (m) => qc.setQueryData(["me"], m),
-    onError: (e) => toast.error(errorMessage(e)),
+    onError: (e) => notifyError(e),
   });
 
   const remove = useMutation({
@@ -335,7 +373,7 @@ export default function Dashboard() {
         }) },
       });
     },
-    onError: (e) => toast.error(errorMessage(e)),
+    onError: (e) => notifyError(e),
   });
 
   const filtered = useMemo(() => {
@@ -359,13 +397,16 @@ export default function Dashboard() {
             {collapsed ? <PanelLeftOpen className="size-4" /> : <PanelLeftClose className="size-4" />}
           </Button>
         </div>
-        <SidebarNav collapsed={collapsed} onSettings={() => setSettingsOpen(true)} section={section} setSection={setSection} binCount={binCount} unread={unread} />
+        <SidebarNav collapsed={collapsed} onSettings={() => setSettingsOpen(true)} section={section} setSection={setSection} binCount={binCount} unread={unread} me={me.data} />
         <div className={cn("flex items-center gap-2.5 border-t border-[#E5E5E3] p-3", collapsed && "justify-center")}>
           <UserButton />
           {!collapsed && (
             <div className="min-w-0 text-xs">
               <p className="truncate font-medium text-[#111111]" data-testid="sidebar-account-name">{label}</p>
               <p className="truncate text-[#666664]" data-testid="sidebar-account-email">{user?.primaryEmailAddress?.emailAddress}</p>
+              <Link to="/billing" className="text-[11px] text-[#0F766E] hover:underline" data-testid="sidebar-plan-link">
+                {me.data ? `${me.data.plan[0].toUpperCase()}${me.data.plan.slice(1)} plan${me.data.plan === "free" ? " · Upgrade" : ""}` : ""}
+              </Link>
             </div>
           )}
         </div>
@@ -374,7 +415,7 @@ export default function Dashboard() {
       <Sheet open={mobileNav} onOpenChange={setMobileNav}>
         <SheetContent side="left" className="w-64 bg-[#F4F4F2] p-0">
           <SheetTitle className="flex h-14 items-center border-b border-[#E5E5E3] px-4"><Logo to="/dashboard" /></SheetTitle>
-          <SidebarNav collapsed={false} binCount={binCount} unread={unread} onSettings={() => { setMobileNav(false); setSettingsOpen(true); }} section={section} setSection={(s) => { setSection(s); setMobileNav(false); }} />
+          <SidebarNav collapsed={false} binCount={binCount} unread={unread} me={me.data} onSettings={() => { setMobileNav(false); setSettingsOpen(true); }} section={section} setSection={(s) => { setSection(s); setMobileNav(false); }} />
         </SheetContent>
       </Sheet>
 

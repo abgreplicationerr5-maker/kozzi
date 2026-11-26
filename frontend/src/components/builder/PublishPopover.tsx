@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import ShareDialog, { type ShareTab } from "@/components/builder/ShareDialog";
+import { notifyError } from "@/lib/notify";
 
 const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
@@ -40,7 +41,7 @@ export default function PublishPopover({ project }: { project: Project }) {
       qc.invalidateQueries({ queryKey: ["projects"] });
       toast.success(project.published ? "Latest changes are live" : "Your app is live");
     },
-    onError: (e) => toast.error(errorMessage(e)),
+    onError: (e) => notifyError(e),
   });
   const toggleGallery = useMutation({
     mutationFn: (value: boolean) => apiPost<Project>(`/projects/${project.id}/gallery`, { in_gallery: value }),
@@ -51,7 +52,7 @@ export default function PublishPopover({ project }: { project: Project }) {
     },
     onError: (e) => {
       setGallery(project.in_gallery);
-      toast.error(errorMessage(e));
+      notifyError(e);
     },
   });
   const unpublish = useMutation({
@@ -61,7 +62,7 @@ export default function PublishPopover({ project }: { project: Project }) {
       qc.invalidateQueries({ queryKey: ["projects"] });
       toast.success("App unpublished");
     },
-    onError: (e) => toast.error(errorMessage(e)),
+    onError: (e) => notifyError(e),
   });
 
   return (

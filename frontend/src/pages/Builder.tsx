@@ -19,6 +19,7 @@ import PublishPopover from "@/components/builder/PublishPopover";
 import VersionMenu from "@/components/builder/VersionMenu";
 import StatsPanel from "@/components/builder/StatsPanel";
 import { openCommandMenu } from "@/components/CommandMenu";
+import { notifyError } from "@/lib/notify";
 
 type Tab = "preview" | "data" | "code" | "activity";
 const WIDTHS: Record<Device, string> = { desktop: "100%", tablet: "768px", phone: "375px" };
@@ -43,7 +44,7 @@ function TitleField({ project }: { project: Project }) {
     },
     onError: (e) => {
       setState("idle");
-      toast.error(errorMessage(e));
+      notifyError(e);
     },
   });
 
@@ -130,7 +131,7 @@ export default function Builder() {
       qc.setQueryData(["project", projectId], data);
       setAppError(null);
     },
-    onError: (e) => toast.error(errorMessage(e)),
+    onError: (e) => notifyError(e),
   });
 
   const onWrite = () => {

@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
 
 from clerk_auth import require_user
-from lib import core
+from lib import core, plans
 from lib.agent import run_agent
 from lib.db import db
 from lib.generator import PROGRESS
@@ -53,13 +53,18 @@ async def views_by_project(ids: list[str]) -> dict[str, int]:
 
 @router.get("/projects", response_model=list[ProjectSummary])
 async def list_projects(user: dict = Depends(require_user)):
-    docs = await db.projects.find({"owner_id": user["user_id"], **core.LIVE}, {"_id": 0}).sort("updated_at", -1).to_list(500)
+    uid = user["user_id"]
+    owners = await plans.team_owner_ids(uid)
+    docs = await db.projects.find({"owner_id": {"$in": [uid, *owners]}, **core.LIVE}, {"_id": 0}).sort("updated_at", -1).to_list(500)
     views = await views_by_project([d["id"] for d in docs])
-    return [core.summary(d, views.get(d["id"], 0)) for d in docs]
+    names = {u["user_id"]: u.get("display_name") or u.get("email", "") for u in
+             await db.users.find({"user_id": {"$in": owners}}, {"_id": 0, "user_id": 1, "display_name": 1, "email": 1}).to_list(100)}
+    return [core.summary(d, views.get(d["id"], 0), uid, names.get(d["owner_id"], "")) for d in docs]
 
 
 @router.post("/projects", response_model=Project, status_code=201)
 async def create_project(body: ProjectCreate, user: dict = Depends(require_user)):
+    await plans.check_project_quota(user["user_id"])
     title = body.title.strip() or "Untitled app"
     ts = core.now()
     doc = {
@@ -99,13 +104,14 @@ async def update_project(project_id: str, body: ProjectUpdate, user: dict = Depe
 @router.delete("/projects/{project_id}", status_code=204)
 async def delete_project(project_id: str, user: dict = Depends(require_user)):
     """Soft delete: the project leaves the dashboard and its live link, and waits in the Bin."""
-    await core.owned_project(project_id, user["user_id"])
+    await core.owned_project(project_id, user["user_id"], owner_only=True)
     await db.projects.update_one({"id": project_id}, {"$set": {"deleted_at": core.now()}})
     return Response(status_code=204)
 
 
 @router.post("/projects/{project_id}/duplicate", response_model=Project, status_code=201)
 async def duplicate_project(project_id: str, user: dict = Depends(require_user)):
+    await plans.check_project_quota(user["user_id"])
     src = await db.projects.find_one(
         {"id": project_id, **core.LIVE,
          "$or": [{"owner_id": user["user_id"]}, {"in_gallery": True, "published": True}]}, {"_id": 0}
@@ -222,6 +228,7 @@ async def restore_version(project_id: str, number: int, user: dict = Depends(req
 @router.post("/projects/{project_id}/publish", response_model=Project)
 async def publish(project_id: str, body: PublishIn, user: dict = Depends(require_user)):
     doc = await core.owned_project(project_id, user["user_id"])
+    await plans.check_live_quota(doc)
     await core.publish_project(doc, body.slug, body.in_gallery)
     return await _reload(project_id)
 

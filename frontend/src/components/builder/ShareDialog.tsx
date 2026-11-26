@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { notifyError } from "@/lib/notify";
 
 export type ShareTab = "domain" | "embed";
 const HEIGHTS = [600, 720, 900];
@@ -42,7 +43,7 @@ function DomainTab({ project }: { project: Project }) {
       onDone(p);
       toast.success(`Saved ${p.custom_domain}. Set up forwarding, then check it.`);
     },
-    onError: (e) => toast.error(errorMessage(e)),
+    onError: (e) => notifyError(e),
   });
   const check = useMutation({
     mutationFn: () => apiPost<Project>(`/projects/${project.id}/domain/check`),
@@ -51,7 +52,7 @@ function DomainTab({ project }: { project: Project }) {
       if (p.domain_status === "connected") toast.success(`${p.custom_domain} is connected`);
       else toast.error("Not forwarding yet");
     },
-    onError: (e) => toast.error(errorMessage(e)),
+    onError: (e) => notifyError(e),
   });
   const remove = useMutation({
     mutationFn: () => apiDelete<Project>(`/projects/${project.id}/domain`),
@@ -60,7 +61,7 @@ function DomainTab({ project }: { project: Project }) {
       setDomain("");
       toast.success("Domain removed");
     },
-    onError: (e) => toast.error(errorMessage(e)),
+    onError: (e) => notifyError(e),
   });
 
   const saved = project.custom_domain;

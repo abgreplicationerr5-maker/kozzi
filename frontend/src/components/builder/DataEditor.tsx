@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { notifyError } from "@/lib/notify";
 
 function display(v: unknown): string {
   if (v === null || v === undefined) return "";
@@ -125,7 +126,7 @@ export default function DataEditor({ projectId }: { projectId: string }) {
     qc.invalidateQueries({ queryKey: ["tables", projectId] });
     qc.invalidateQueries({ queryKey: ["records", projectId] });
   };
-  const onErr = (e: unknown) => toast.error(errorMessage(e));
+  const onErr = (e: unknown) => notifyError(e);
 
   const addRow = useMutation({
     mutationFn: () => apiPost<RecordOut>(`${base}/records`, { data: Object.fromEntries(columns.map((c) => [c, ""])) }),

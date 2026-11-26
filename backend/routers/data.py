@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
 
 from clerk_auth import require_user
-from lib import core, email
+from lib import core, email, plans
 from lib.dates import today_iso
 from lib.db import db
 from lib.generator import ai_complete
@@ -156,8 +156,12 @@ async def gallery():
         {"_id": 0, "html": 0, "published_html": 0},
     ).sort("published_at", -1).to_list(24)
     views = await views_by_project([d["id"] for d in docs])
+    owners = {u["user_id"]: u for u in await db.users.find(
+        {"user_id": {"$in": list({d["owner_id"] for d in docs})}}, {"_id": 0, "user_id": 1, "username": 1, "display_name": 1}).to_list(100)}
     return [
         GalleryApp(
+            owner_username=owners.get(d["owner_id"], {}).get("username", ""),
+            owner_name=owners.get(d["owner_id"], {}).get("display_name", ""),
             id=d["id"], title=d["title"], slug=d["slug"], description=d.get("description", ""),
             record_count=await db.records.count_documents({"project_id": d["id"], **core.LIVE}),
             views=views.get(d["id"], 0), updated_at=core.aware(d.get("published_at") or d["updated_at"]),
@@ -171,7 +175,8 @@ async def public_app(slug: str, view: int = 0):
     d = await core.public_project(slug)
     if view:  # counted only for full-screen visits, not gallery thumbnails
         await db.app_visits.update_one({"project_id": d["id"], "day": today_iso()}, {"$inc": {"count": 1}}, upsert=True)
-    return PublicApp(title=d["title"], slug=d["slug"], html=d.get("published_html") or d.get("html", ""))
+    return PublicApp(title=d["title"], slug=d["slug"], html=d.get("published_html") or d.get("html", ""),
+                     show_badge=await plans.shows_badge(d["owner_id"]))
 
 
 @router.get("/public/apps/{slug}/tables/{table}/records", response_model=list[RecordOut])

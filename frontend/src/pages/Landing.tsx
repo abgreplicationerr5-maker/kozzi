@@ -11,8 +11,10 @@ import { buttonVariants } from "@/components/ui/button";
 import Logo from "@/components/Logo";
 import Footer from "@/components/Footer";
 import PromptBox from "@/components/PromptBox";
-import AppFrame from "@/components/AppFrame";
-import { savePending } from "@/lib/pending";
+import GalleryCard from "@/components/GalleryCard";
+import PlanCards, { IntervalToggle, type Interval } from "@/components/PlanCards";
+import EnquiryDialog from "@/components/EnquiryDialog";
+import { PLAN_INTENT_KEY, savePending } from "@/lib/pending";
 import { useCreateProject, useDuplicateProject } from "@/lib/hooks";
 import { cn } from "@/lib/utils";
 
@@ -23,90 +25,6 @@ const IDEAS = [
   "A workout log with weekly volume charts",
 ];
 
-const PLANS = [
-  {
-    name: "Free",
-    price: "$0",
-    note: "for trying ideas",
-    features: ["Unlimited projects", "Live database for every app", "Publish to a kozzi link", "Version history and a 30-day Bin"],
-    cta: "Start building",
-    plan: "free",
-  },
-  {
-    name: "Pro",
-    price: "$20",
-    note: "per month",
-    features: ["Everything in Free", "Priority AI generation", "Higher daily email limit", "No Kozzi badge on live apps"],
-    cta: "Choose Pro",
-    plan: "pro",
-    featured: true,
-  },
-  {
-    name: "Team",
-    price: "$50",
-    note: "per month, 5 seats",
-    features: ["Everything in Pro", "Five seats on one bill", "Highest email limit", "Priority support"],
-    cta: "Choose Team",
-    plan: "team",
-  },
-];
-
-function GalleryCard({ app }: { app: GalleryApp }) {
-  const { isSignedIn } = useAuth();
-  const navigate = useNavigate();
-  const dup = useDuplicateProject(true);
-  const { data } = useQuery({
-    queryKey: ["public-app", app.slug],
-    queryFn: () => apiGet<PublicApp>(`/public/apps/${app.slug}`),
-  });
-
-  const copy = () => {
-    if (isSignedIn) dup.mutate(app.id);
-    else {
-      savePending({ type: "remix", projectId: app.id, title: app.title });
-      navigate("/sign-up");
-    }
-  };
-
-  return (
-    <motion.article
-      initial={{ opacity: 0, y: 12 }}
-      whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true, margin: "-60px" }}
-      transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
-      data-testid={`gallery-card-${app.slug}`}
-      className="k-card group overflow-hidden rounded-xl border border-[#E5E5E3] bg-white"
-    >
-      <Link to={`/app/${app.slug}`} data-testid={`gallery-preview-${app.slug}`} className="relative block aspect-[16/10] overflow-hidden border-b border-[#E5E5E3] bg-[#F9F9F8]">
-        {data?.html ? (
-          <div className="absolute inset-0 origin-top-left scale-[0.5]" style={{ width: "200%", height: "200%" }}>
-            <AppFrame html={data.html} target={{ kind: "public", slug: app.slug }} title={app.title} interactive={false} testId={`gallery-frame-${app.slug}`} />
-          </div>
-        ) : (
-          <div className="k-skeleton absolute inset-0" />
-        )}
-        <span className="absolute inset-0 bg-transparent transition-colors duration-200 group-hover:bg-black/[0.02]" />
-      </Link>
-      <div className="space-y-3 p-5">
-        <div>
-          <h3 className="text-base font-medium tracking-tight" data-testid={`gallery-title-${app.slug}`}>{app.title}</h3>
-          <p className="mt-0.5 text-[11px] text-[#9A9A97]" data-testid={`gallery-meta-${app.slug}`}>
-            {app.record_count.toLocaleString()} rows · {app.views.toLocaleString()} views · published {formatDistanceToNow(new Date(app.updated_at), { addSuffix: true })}
-          </p>
-        </div>
-        <p className="line-clamp-2 text-sm leading-relaxed text-[#666664]">{app.description}</p>
-        <div className="flex gap-2 pt-1">
-          <Link to={`/app/${app.slug}`} data-testid={`gallery-open-btn-${app.slug}`} className={cn(buttonVariants({ variant: "outline", size: "sm" }), "k-press")}>
-            <ExternalLink className="size-3.5" /> Open app
-          </Link>
-          <button type="button" onClick={copy} disabled={dup.isPending} data-testid={`gallery-copy-btn-${app.slug}`} className={cn(buttonVariants({ size: "sm" }), "k-press")}>
-            <Copy className="size-3.5" /> {dup.isPending ? "Copying" : "Make a copy"}
-          </button>
-        </div>
-      </div>
-    </motion.article>
-  );
-}
 
 export default function Landing() {
   const navigate = useNavigate();
@@ -114,6 +32,18 @@ export default function Landing() {
   const create = useCreateProject();
   const [prompt, setPrompt] = useState("");
   const gallery = useQuery({ queryKey: ["gallery"], queryFn: () => apiGet<GalleryApp[]>("/public/gallery") });
+  const [interval, setInterval] = useState<Interval>("month");
+  const [enquiry, setEnquiry] = useState(false);
+  const pickPlan = (plan: string) => {
+    if (plan === "enterprise") return setEnquiry(true);
+    if (plan === "free") return navigate(isSignedIn ? "/dashboard" : "/sign-up");
+    const key = `${plan}_${interval === "month" ? "monthly" : "yearly"}`;
+    if (isSignedIn) navigate(`/billing?plan=${key}`);
+    else {
+      localStorage.setItem(PLAN_INTENT_KEY, key);
+      navigate("/sign-up");
+    }
+  };
 
   const start = (text: string) => {
     if (isSignedIn) create.mutate(text);
@@ -227,45 +157,15 @@ export default function Landing() {
       </section>
 
       <section id="pricing" className="border-t border-[#E5E5E3] bg-white">
-        <div className="mx-auto max-w-5xl px-6 py-20">
-          <div className="mb-12 text-center">
+        <div className="mx-auto max-w-6xl px-6 py-20">
+          <div className="mb-10 flex flex-col items-center gap-4 text-center">
             <h2 className="text-2xl font-medium tracking-tight sm:text-3xl">Simple plans that grow with you</h2>
+            <IntervalToggle value={interval} onChange={setInterval} />
           </div>
-          <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
-            {PLANS.map((p) => (
-              <div
-                key={p.name}
-                data-testid={`pricing-plan-${p.plan}`}
-                className={cn(
-                  "k-card flex flex-col rounded-xl border bg-white p-6",
-                  p.featured ? "border-[#111111]" : "border-[#E5E5E3]",
-                )}
-              >
-                <div className="flex items-center justify-between">
-                  <h3 className="text-base font-medium">{p.name}</h3>
-                </div>
-                <p className="mt-4 text-3xl font-medium tracking-tight">
-                  {p.price} <span className="text-sm font-normal text-[#666664]">{p.note}</span>
-                </p>
-                <ul className="mt-6 flex-1 space-y-2.5 text-sm">
-                  {p.features.map((f) => (
-                    <li key={f} className="flex items-start gap-2">
-                      <Check className="mt-0.5 size-4 shrink-0 text-[#0F766E]" /> {f}
-                    </li>
-                  ))}
-                </ul>
-                <Link
-                  to={isSignedIn ? "/dashboard" : `/sign-up?plan=${p.plan}`}
-                  data-testid={`pricing-cta-${p.plan}`}
-                  className={cn(buttonVariants({ variant: p.featured ? "default" : "outline" }), "k-press mt-8 w-full")}
-                >
-                  {p.cta}
-                </Link>
-              </div>
-            ))}
-          </div>
+          <PlanCards interval={interval} onSelect={pickPlan} />
         </div>
       </section>
+      <EnquiryDialog open={enquiry} onOpenChange={setEnquiry} />
       <Footer />
     </div>
   );

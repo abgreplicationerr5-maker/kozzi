@@ -7,6 +7,7 @@ import type { Project, Version } from "@/lib/types";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { notifyError } from "@/lib/notify";
 
 export default function VersionMenu({ project }: { project: Project }) {
   const qc = useQueryClient();
@@ -21,7 +22,7 @@ export default function VersionMenu({ project }: { project: Project }) {
       qc.invalidateQueries({ queryKey: ["messages", project.id] });
       toast.success(`Restored version ${n}`);
     },
-    onError: (e) => toast.error(errorMessage(e)),
+    onError: (e) => notifyError(e),
   });
 
   return (

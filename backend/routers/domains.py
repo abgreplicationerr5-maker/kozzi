@@ -15,7 +15,7 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from clerk_auth import require_user
-from lib import core
+from lib import core, plans
 from lib.db import db
 from models.schemas import DomainIn, Project
 from routers.projects import _reload
@@ -90,7 +90,8 @@ async def _owned_live(project_id: str, user: dict) -> dict:
 
 @router.put("/projects/{project_id}/domain", response_model=Project)
 async def set_domain(project_id: str, body: DomainIn, user: dict = Depends(require_user)):
-    await _owned_live(project_id, user)
+    doc = await _owned_live(project_id, user)
+    await plans.check_domains(doc["owner_id"])
     domain = normalize(body.domain)
     if await db.projects.find_one({"custom_domain": domain, "id": {"$ne": project_id}, **core.LIVE}, {"_id": 1}):
         raise HTTPException(status_code=409, detail="That domain is already connected to another app")

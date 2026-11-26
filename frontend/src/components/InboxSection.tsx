@@ -9,6 +9,7 @@ import type { FlushOut, Inbox, InboxEmail } from "@/lib/types";
 import { copyText } from "@/lib/hooks";
 import { cn } from "@/lib/utils";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { notifyError } from "@/lib/notify";
 
 const KIND = { builder: "From the chat", notify: "App alert", receipt: "Confirmation to a visitor" } as const;
 const STATUS = {
@@ -92,7 +93,7 @@ export default function InboxSection() {
   const readAll = useMutation({
     mutationFn: () => apiPost("/inbox/read-all"),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["inbox"] }),
-    onError: (e) => toast.error(errorMessage(e)),
+    onError: (e) => notifyError(e),
   });
   const flush = useMutation({
     mutationFn: () => apiPost<FlushOut>("/inbox/flush"),
@@ -101,7 +102,7 @@ export default function InboxSection() {
       if (r.sent) toast.success(`Sent ${r.sent} ${r.sent === 1 ? "email" : "emails"}`);
       else toast.error("Delivery is still paused. They stay queued.");
     },
-    onError: (e) => toast.error(errorMessage(e)),
+    onError: (e) => notifyError(e),
   });
 
   const d = inbox.data;

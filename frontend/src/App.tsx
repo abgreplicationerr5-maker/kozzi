@@ -3,6 +3,11 @@ import { AnimatePresence, motion } from "motion/react";
 import ClerkAuthProvider from "@/components/auth/ClerkAuthProvider";
 import RequireAuth from "@/components/RequireAuth";
 import CommandMenu from "@/components/CommandMenu";
+import BillingPage from "@/pages/Billing";
+import TeamPage from "@/pages/Team";
+import AdminPage from "@/pages/Admin";
+import PaymentResult from "@/pages/PaymentResult";
+import ProfilePage from "@/pages/Profile";
 import { Toaster } from "@/components/ui/sonner";
 import Landing from "@/pages/Landing";
 import Dashboard from "@/pages/Dashboard";
@@ -38,6 +43,12 @@ export default function App() {
                   <Route path="/sign-up/*" element={<Page><SignUpPage /></Page>} />
                   <Route path="/dashboard" element={<Page><RequireAuth><Dashboard /></RequireAuth></Page>} />
                   <Route path="/builder/:projectId" element={<Page><RequireAuth><Builder /></RequireAuth></Page>} />
+                  <Route path="/billing" element={<Page><RequireAuth><BillingPage /></RequireAuth></Page>} />
+                  <Route path="/team" element={<Page><RequireAuth><TeamPage /></RequireAuth></Page>} />
+                  <Route path="/admin" element={<Page><RequireAuth><AdminPage /></RequireAuth></Page>} />
+                  <Route path="/payment/success" element={<Page><RequireAuth><PaymentResult /></RequireAuth></Page>} />
+                  <Route path="/payment/cancel" element={<Page><RequireAuth><PaymentResult /></RequireAuth></Page>} />
+                  <Route path="/u/:username" element={<Page><ProfilePage /></Page>} />
                   <Route path="*" element={<NotFound />} />
                 </Routes>
               </AnimatePresence>

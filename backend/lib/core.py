@@ -55,8 +55,8 @@ async def unique_slug(base: str) -> str:
     return slug
 
 
-def summary(doc: dict, views: int = 0) -> ProjectSummary:
-    return ProjectSummary(**_common(doc), views=views)
+def summary(doc: dict, views: int = 0, user_id: str | None = None, shared_by: str = "") -> ProjectSummary:
+    return ProjectSummary(**_common(doc), views=views, is_owner=user_id is None or doc["owner_id"] == user_id, shared_by=shared_by)
 
 
 def full(doc: dict, gen_chars: int = 0) -> Project:
@@ -95,9 +95,12 @@ def _common(doc: dict) -> dict:
     }
 
 
-async def owned_project(project_id: str, user_id: str) -> dict:
-    doc = await db.projects.find_one({"id": project_id, "owner_id": user_id, **LIVE}, {"_id": 0})
-    if not doc:
+async def owned_project(project_id: str, user_id: str, owner_only: bool = False) -> dict:
+    """The project if this user owns it, or (unless owner_only) is on the owner's team."""
+    from lib.plans import can_edit  # local import: plans imports core
+
+    doc = await db.projects.find_one({"id": project_id, **LIVE}, {"_id": 0})
+    if not doc or (doc["owner_id"] != user_id and (owner_only or not await can_edit(doc, user_id))):
         raise HTTPException(status_code=404, detail="Project not found")
     return doc
 

@@ -18,3 +18,6 @@ export function takePending(): Intent | null {
     return null;
   }
 }
+
+/** A paid plan picked on the pricing page before sign-in; the billing page picks it up. */
+export const PLAN_INTENT_KEY = "kozzi_plan_intent";

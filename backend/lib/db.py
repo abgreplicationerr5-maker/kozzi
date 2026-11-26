@@ -18,7 +18,11 @@ logger = logging.getLogger(__name__)
 
 # One entry per collection: every field a route filters, sorts, or dedupes on. Applied by ensure_indexes() at startup.
 INDEXES: dict[str, list[IndexModel]] = {
-    "users": [IndexModel([("user_id", ASCENDING)], name="user_id", unique=True)],
+    "users": [
+        IndexModel([("user_id", ASCENDING)], name="user_id", unique=True),
+        IndexModel([("username", ASCENDING)], name="username", unique=True, partialFilterExpression={"username": {"$type": "string"}}),
+        IndexModel([("stripe_customer_id", ASCENDING)], name="stripe_customer"),
+    ],
     "projects": [
         IndexModel([("id", ASCENDING)], name="id", unique=True),
         IndexModel([("slug", ASCENDING)], name="slug", unique=True),
@@ -45,6 +49,14 @@ INDEXES: dict[str, list[IndexModel]] = {
         IndexModel([("status", ASCENDING), ("created_at", ASCENDING)], name="status_created"),
         IndexModel([("id", ASCENDING)], name="id"),
     ],
+    "team_members": [
+        IndexModel([("owner_id", ASCENDING), ("email", ASCENDING)], name="owner_email", unique=True),
+        IndexModel([("member_user_id", ASCENDING), ("status", ASCENDING)], name="member_status"),
+        IndexModel([("email", ASCENDING), ("status", ASCENDING)], name="email_status"),
+    ],
+    "payment_transactions": [IndexModel([("session_id", ASCENDING)], name="session_id", unique=True),
+                             IndexModel([("created_at", DESCENDING)], name="created")],
+    "enquiries": [IndexModel([("created_at", DESCENDING)], name="created")],
     "cron_runs": [IndexModel([("run_id", ASCENDING)], name="run_id", unique=True)],
 }
 

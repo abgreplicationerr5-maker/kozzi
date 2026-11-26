@@ -43,13 +43,13 @@ export default function HostedApp() {
   return (
     <div className="relative h-[100dvh] w-full bg-white" data-testid="hosted-app">
       <AppFrame html={app.data.html} title={app.data.title} target={{ kind: "public", slug }} testId="hosted-frame" />
-      <Link
+      {app.data.show_badge && <Link
         to="/"
         data-testid="hosted-kozzi-badge"
         className="k-press fixed bottom-3 right-3 z-10 inline-flex items-center gap-1.5 rounded-full border border-[#E5E5E3] bg-white/90 px-2.5 py-1 text-[11px] font-medium text-[#111111] shadow-sm backdrop-blur"
       >
         <LogoMark className="size-4 rounded" /> Built with Kozzi
-      </Link>
+      </Link>}
     </div>
   );
 }

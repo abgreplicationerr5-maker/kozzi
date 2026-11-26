@@ -192,6 +192,7 @@ async def owner_email(owner_id: str) -> str:
             r = await client.get(f"https://api.clerk.com/v1/users/{owner_id}", headers={"Authorization": f"Bearer {secret}"})
         if r.status_code == 200:
             data = r.json()
+            avatar = data.get("image_url") or ""
             primary = data.get("primary_email_address_id")
             for a in data.get("email_addresses", []):
                 if a.get("id") == primary or not email:
@@ -199,7 +200,7 @@ async def owner_email(owner_id: str) -> str:
     except Exception as exc:
         logger.warning("Clerk email lookup failed: %s", exc)
     if email:
-        await db.users.update_one({"user_id": owner_id}, {"$set": {"email": email}}, upsert=True)
+        await db.users.update_one({"user_id": owner_id}, {"$set": {"email": email, "avatar_url": locals().get("avatar", "")}}, upsert=True)
     return email
 
 
@@ -221,8 +222,11 @@ QUEUE_DAYS = 7
 
 
 async def _check_cap(project_id: str) -> None:
+    from lib.plans import emails_per_day  # local import: plans imports core, core is imported here
+    project = await db.projects.find_one({"id": project_id}, {"_id": 0, "owner_id": 1}) or {}
+    cap = await emails_per_day(project.get("owner_id", "")) if project else DAILY_CAP_PER_APP
     used = await db.emails.count_documents({"project_id": project_id, "day": today_iso(), "status": {"$in": ["sent", "queued"]}})
-    if used >= DAILY_CAP_PER_APP:
+    if used >= cap:
         raise HTTPException(status_code=429, detail="This app has reached today's email limit")
 
 

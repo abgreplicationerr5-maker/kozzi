@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import PromptBox from "@/components/PromptBox";
 import { LogoMark } from "@/components/Logo";
+import { notifyError } from "@/lib/notify";
 
 const SUGGESTIONS = [
   "Add 10 realistic test rows",
@@ -72,12 +73,12 @@ export default function ChatPanel({ project }: { project: Project }) {
       setText("");
       onStarted(p);
     },
-    onError: (e) => toast.error(errorMessage(e)),
+    onError: (e) => notifyError(e),
   });
   const retry = useMutation({
     mutationFn: () => apiPost<Project>(`/projects/${project.id}/retry`),
     onSuccess: onStarted,
-    onError: (e) => toast.error(errorMessage(e)),
+    onError: (e) => notifyError(e),
   });
 
   const list = messages.data ?? [];
